@@ -1,12 +1,16 @@
 """Final assembly: plates on the source timeline, cut at cut_frame, the rendered insert in between, the mastered
 soundtrack; H.264 crf 18 / AAC stereo.
 
-usage: python3 assemble.py <project.json> <insert.mp4> <audio.wav> <out.mp4>
+usage: python3 assemble.py <project.json> <insert.mp4> <audio.wav> <out.mp4> [--preset medium|slow|...]
+
+x264 preset: --preset, else config "master.preset", else medium (measured on an 8.8 min 1080p30 source: 103 s
+against 140 s for slow, at the same crf 18).
 
 Plates go on BEFORE the cut, on the source timeline, so their measured times stay valid after the insert.
 The white flash rises at the end of the insert (build_insert.py) and falls on the first source frames here.
 """
 
+import argparse
 import json
 import os
 import subprocess
@@ -17,8 +21,16 @@ from filter_template import build
 
 
 def main():
-    pj = Project(sys.argv[1])
-    insert, audio, out = sys.argv[2:5]
+    ap = argparse.ArgumentParser()
+    ap.add_argument("project")
+    ap.add_argument("insert")
+    ap.add_argument("audio")
+    ap.add_argument("out")
+    ap.add_argument("--preset", default="")
+    a = ap.parse_args()
+    pj = Project(a.project)
+    insert, audio, out = a.insert, a.audio, a.out
+    preset = a.preset or pj.get("master.preset", "medium")
     if os.path.exists(out):
         raise SystemExit(f"{out} exists; not overwriting")
     work = pj.p(pj.get("work_dir", "work"))
@@ -38,7 +50,7 @@ def main():
         f.write(chain + "\n")
     cmd = [ff(), "-hide_banner", "-y", "-i", pj.base, *plate_inputs, "-i", insert, "-i", audio,
            "-filter_complex_script", script, "-map", "[v]", "-map", f"{i_aud}:a",
-           "-c:v", "libx264", "-crf", "18", "-preset", "slow", "-pix_fmt", "yuv420p", "-r", str(pj.fps),
+           "-c:v", "libx264", "-crf", "18", "-preset", preset, "-pix_fmt", "yuv420p", "-r", str(pj.fps),
            "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-color_range", "tv",
            "-c:a", "aac", "-b:a", "192k", "-ar", str(pj.sr), "-ac", "2", "-movflags", "+faststart", out]
     sys.exit(subprocess.run(cmd).returncode)

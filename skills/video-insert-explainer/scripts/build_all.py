@@ -1,6 +1,7 @@
 """Render the deliverable from a project config, each stage starting as soon as its inputs exist.
 
 usage: python3 build_all.py <project.json> <out.mp4> [--narrate] [--tts-workers N] [--skip-insert] [--sequential]
+                            [--preset slow]   (x264 preset of the final encode; default medium)
 
 Stages (<- the stages each one waits for):
   narrate   build_narration.py --engine clone (TTS workers on the GPU; only with --narrate - without it the
@@ -17,8 +18,8 @@ Stages (<- the stages each one waits for):
   verify    verify_frames.py sheets from config "checks"                 <- assemble
 So the insert render overlaps the soundtrack and loudnorm, and the two QA stages run together. Nothing here
 shares the GPU with the TTS; run score.py (whisper) only after the narration is generated.
-Measured (8.8 min source, 31 s insert): 213 s one by one, 196 s as a graph. assemble's full re-encode (x264 slow,
-already multithreaded) takes 146 s of it and has nothing to run beside it.
+Measured (8.8 min source, 31 s insert): old script (x264 slow) 213 s; graph 196 s with slow, 149 s with medium.
+assemble's full re-encode (already multithreaded) takes 146 s / 102 s of it and has nothing to run beside it.
 Each stage writes <work>/logs/<stage>.log and the run ends with a wall-clock table. A failing stage stops the
 run: stages still running are terminated, the failing log's tail is printed, and the exit status is 1; Ctrl-C or
 SIGTERM stops every running stage the same way (exit 130). insert.mp4 and out.mp4 are written as *.part.mp4 and
@@ -62,7 +63,7 @@ def stages_for(pj, cfg, out, a):
     if not reuse:  # rendered under another name: a stopped render must not be reused by --skip-insert
         st.append(("insert", ["telops"], [py, s("build_insert.py"), cfg, "--render", part(insert)], (part(insert), insert)))
     st += [
-        ("assemble", ["plates", "master"] + ([] if reuse else ["insert"]), [py, s("assemble.py"), cfg, insert, final, part(out)],
+        ("assemble", ["plates", "master"] + ([] if reuse else ["insert"]), [py, s("assemble.py"), cfg, insert, final, part(out), *(["--preset", a.preset] if a.preset else [])],
          (part(out), out)),
         ("check", ["assemble"], [py, s("check_output.py"), cfg, out, *(["--sync", sync] if sync else []),
                                  *(["--dialogue", f"{dlg[0]},{dlg[1]}"] if dlg else [])]),
@@ -152,6 +153,7 @@ def main():
     ap.add_argument("--narrate", action="store_true")
     ap.add_argument("--tts-workers", type=int, default=0)
     ap.add_argument("--skip-insert", action="store_true")
+    ap.add_argument("--preset", default="", help="x264 preset of the final encode (assemble.py; default medium)")
     ap.add_argument("--sequential", action="store_true")
     a = ap.parse_args()
     pj = Project(a.project)

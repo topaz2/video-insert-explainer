@@ -107,14 +107,14 @@ Measured on one Apple-silicon machine (12 cores, 48 GB), empty caches, default v
 
 | Part | One by one | Parallel |
 |---|---|---|
-| `setup.sh` without a video (3 venvs, 4 models, ~9 GB) | ~395 s | 255 s (TTS venv is the longest job) |
-| `setup.sh` with the video (+ download, transcode) | ~627 s | 784 s before chunked downloads (586 s of it the download); with them ~260-300 s expected, not re-measured (the site then asked for a bot check) |
+| `setup.sh` without a video (3 venvs, 4 models, ~9 GB) | 395 s (sum of job times; one model download stalled and was resumed, its first part read from file times) | 255 s (TTS venv is the longest job) |
+| `setup.sh` with the video (+ download, transcode) | 627 s (the video job: 232 s, chunked) | 784 s measured before chunked downloads (586 s of it the download). With chunked downloads: not measured (the site then asked for a bot check); estimate 260-300 s |
 | Download, 476 MB (one connection was throttled to ~1 MB/s) | 586 s | 60 s with `-N 8 --http-chunk-size 10M` |
 | Transcode 4K AV1 -> 1080p30 | ~200 s | (inside setup) |
 | Narration, 7 sentences | 39 s, 1 worker | 44 s with 2 (so a 2nd worker starts only with >= 6 left) |
 | Candidates, 21 takes | 70 s, 1 worker | 56 s, 2 workers 25 s apart |
 | demucs `-d cpu`, 43 s excerpt, beside the 21 takes | 52 s + 56 s | 57 s / TTS 62 s |
-| `build_all.py` (8.8 min source, 31 s insert) | 213 s | 196 s (assemble's re-encode: 146 s) |
+| `build_all.py` (8.8 min source, 31 s insert) | 213 s (old script, x264 slow) | 149 s (graph, x264 medium; assemble 102 s). `--preset slow`: 196 s, assemble 146 s |
 
 ## Pipeline
 
@@ -192,7 +192,8 @@ Measured on one Apple-silicon machine (12 cores, 48 GB), empty caches, default v
     Master with two-pass linear loudnorm; if it falls back to dynamic, fix the mix gains instead of accepting it.
 12. **Render.** `build_all.py project.json out/final.mp4` runs the stages as a dependency graph: plates
     alongside everything before assemble; telops → insert render alongside soundtrack → two-pass loudnorm;
-    then assemble (the full re-encode, ~3/4 of the render time); then
+    then assemble (the full re-encode, ~2/3 of the render time; x264 crf 18 `medium`, `--preset slow` for a
+    slightly smaller file at ~1.4x the encode time); then
     `check_output.py` and `verify_frames.py` together. `--narrate` adds the TTS stage in front (plates run
     while it generates). Logs in `<work>/logs/`, a wall-clock table at the end; `--sequential` for a low-memory
     machine. It never overwrites an existing output.

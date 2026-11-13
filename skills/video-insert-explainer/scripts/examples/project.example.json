@@ -1,0 +1,43 @@
+{
+ "_about": "Fictional example. Paths are relative to this file. Times on the source axis are seconds of the source video; insert times live in the events.",
+ "fps": 30,
+ "sample_rate": 48000,
+ "work_dir": "work",
+ "rights": {"voice_clone_authorized": false, "output": "local file only; the user decides on any publication"},
+ "source": {"url": "https://www.youtube.com/watch?v=EXAMPLE", "file": "src/source.mp4", "work_copy": "work/base_1080p.mp4", "measured_fps": 60},
+ "cut": {"time": 12.40},
+ "slides": ["slides/01.png", "slides/02.png"],
+ "events_template": "events.template.json",
+ "events": "work/events.json",
+ "narration": {
+  "sentences": "sentences.json", "subtitles": "subtitles.json",
+  "clips_dir": "work/narration/clips", "timeline": "work/narration/timeline.json", "full": "work/narration/narration_full.wav",
+  "start": 2.6, "gap": 0.10, "page_breath": 0.8, "page_breath_overrides": {"1": 0.3}, "end_pad": 0.5,
+  "take": {}
+ },
+ "tts": {"python": "tts/.venv/bin/python", "ref_wav": "tts/ref/speaker_a.wav", "ref_text": "tts/ref/speaker_a.txt",
+         "model": "tts/hf/hub/models--Qwen--Qwen3-TTS-12Hz-1.7B-Base/snapshots/<rev>", "device": "auto", "say_voice": "Kyoko"},
+ "style": {"font_pattern": "/System/Library/Fonts/ヒラギノ角ゴシック W{}.ttc", "max_chars": 28, "sub_size": 44, "sub_weight": 6,
+           "sub_stroke": 5, "sub_bottom": 1040, "line_gap": 1.40, "head_size": 64, "head_weight": 8, "head_top": 60},
+ "plates": [
+  {"id": "P1", "start": 3.500, "end": 9.150, "rect": [680, 1000, 1240, 1064], "color": "#000000",
+   "text": {"runs": [["機能追加、持ってきたわよ", "#FDFDFD", null]], "left": 712, "top": 1012, "weight": 5, "size": 40}},
+  {"id": "P2", "start": 1.000, "end": 2.983, "rect": [560, 940, 1360, 1036], "color": "#000000", "radius": 25, "feather": 6,
+   "text": {"runs": [["機能追加", "#E8590C", "#2A0C00"], ["を受け取れ", "#FAFAFA", "#121212"]], "left": 600, "top": 962, "weight": 6, "size": 50, "stroke": 2}},
+  {"id": "P3", "text": {"text": "機能追加をめくる"}, "fill": "#B8B0A8", "weight": 6, "feather_ratio": 0.13,
+   "stages": [
+    {"t0": 14.000, "t1": 14.500, "left": 900, "top": 400, "size": 24, "rect": [896, 394, 1150, 428], "c0": "#202020", "c1": "#1C1C1C", "blur": 0.6},
+    {"t0": 14.700, "t1": 16.000, "left": 880, "top": 370, "size": 16, "rect": [876, 366, 1046, 390], "c0": "#222222", "c1": "#1E1E1E", "blur": 0.4}]}
+ ],
+ "audio": {"narration_gain_db": 0.0, "extra_db": 0.0, "fade_at_cut": 0.05,
+  "replacements": [
+   {"type": "word", "file": "work/replace/word_fit.wav", "end": 4.60, "xfade": 0.02},
+   {"type": "line", "file": "work/replace/line.wav", "start": 7.00, "xfade": 0.03}]},
+ "master": {"I": -14, "TP": -1, "LRA": 11},
+ "qa": {"sync_times": [2.0, 15.0], "dialogue": [3.0, 6.0]},
+ "checks": [
+  {"group": "P1 / word", "picks": [["o", 3.467, "before"], ["o", 3.5, "first"], ["o", 6.0, "middle"], ["o", 9.15, "last"], ["o", 9.183, "after"]]},
+  {"group": "cut", "picks": [["o", 12.333, "last frame before"], ["T", 0.0, "insert head"], ["T", 0.4, "rise"], ["o", 12.40, "first frame after"]]},
+  {"group": "insert", "picks": [["T", 3.0, "heading + subtitle"], ["T", 8.0, "slide 1"], ["T", 13.5, "zoom"], ["T", 16.0, "marker + note"], ["T", 19.4, "shrink"], ["T", 24.5, "slide out"]]}
+ ]
+}

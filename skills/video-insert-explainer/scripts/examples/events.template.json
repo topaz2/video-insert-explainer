@@ -1,0 +1,43 @@
+{
+ "_about": "Insert schedule. A string starting with = is an expression over narration anchors (<id>.s / .e / .v), N_END and the vars below; resolve_events.py turns this into events.json. Zoom targets are slide-pixel rects [x, y, w, h]; markers, bounces and blinks are 1080p screen rects of the frame they are drawn on.",
+ "vars": {
+  "P1": "=n0_00.e+0.35",
+  "T2": "=n2_00.s-0.6",
+  "R2": "=n2_02.s-0.6",
+  "SHRINK": "=n9_00.s",
+  "OUT": "=n9_01.e+0.16",
+  "END": "=OUT+2.34+0.16",
+  "TAIL": 0.25,
+  "IJ1": "=n1_00.e-TAIL+0.15",
+  "IJ1_DUR": 0.5
+ },
+ "checks": ["P1 < T2", "R2+0.6 <= n2_02.s+0.011", "T2+0.4 < R2", "SHRINK < OUT", "OUT < END",
+            "IJ1 >= n1_00.e-TAIL", "IJ1+IJ1_DUR <= n2_00.v"],
+ "insert_len": "=END",
+ "background": {"blur": 10, "brightness": 0.7, "crossfade": 0.4},
+ "small_scale": 0.55,
+ "entry": {"rise_end": 0.5, "overshoot": 0.06, "expand": ["=n0_00.e", "=P1"]},
+ "pages": [[1, "=P1", "=T2"], [2, "=T2+0.4", "=SHRINK"]],
+ "turns": [["=T2", 1, 2]],
+ "turn_len": 0.4,
+ "zoom_len": 0.6,
+ "zooms": {"2": [["=n2_01.s", [980, 420, 1120, 630]], ["=R2", null]]},
+ "bounces": [[1, "=n1_00.s", [140, 560, 520, 320]]],
+ "markers": [[2, "=n2_02.s", "=n2_02.e", [140, 600, 700, 110]]],
+ "marker": {"color": "#FFE14D", "alpha": 0.45, "grow": 0.4},
+ "blinks": [[2, "=n2_01.e", [1300, 380, 120, 260]]],
+ "blink": {"color": "#E53935", "width": 12, "grow": 12},
+ "badges": [{"slide": 2, "text": "12/1 リリース", "color": "#1971C2", "top": 20}],
+ "notes": [{"slide": 2, "text": "設定から使えます", "color": "#E8590C", "top": 80, "start": "=n2_02.s", "end": "=n2_02.e", "fade": 0.2}],
+ "pip_pos": [1500, 620],
+ "interjections": [{"t": "=IJ1", "pip": "interjections/pip_b.png", "sound": "interjections/b_oh.wav", "text": "あら", "dur": "=IJ1_DUR", "color": "#8FD694"}],
+ "heading": {"text": "〜機能追加のお知らせ〜", "start": 0.3, "end": "=n0_00.e+0.2", "fade": 0.2},
+ "shrink": ["=SHRINK", "=SHRINK+0.5"],
+ "exit": ["=OUT", "=OUT+1.0"],
+ "sfx": [
+  {"file": "sfx/chime_up.wav", "gain_db": -6, "times": [0.0]},
+  {"file": "sfx/flip.wav", "gain_db": -2, "times": ["=n0_00.e", "=T2"]},
+  {"file": "sfx/pop.wav", "gain_db": -11, "times": ["=n1_00.s", "=n2_01.e"]},
+  {"file": "sfx/chime_down.wav", "gain_db": -6, "times": ["=OUT"]}
+ ]
+}

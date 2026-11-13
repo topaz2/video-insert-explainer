@@ -12,7 +12,8 @@
 #   --install-tools  run `brew install` for missing ffmpeg / yt-dlp / uv instead of stopping
 #   --sequential     run the jobs one after another in the foreground (slow; for low bandwidth or comparison)
 #   --no-wait        start the jobs and return at once; check later with --status
-#   --status         print the state of every job and wait until all have finished
+#   --status         wait for and report the jobs the other options select (pass the same --source/--no-demucs);
+#                    exit 0 only when every one of them is done and the venvs and the TTS snapshot exist
 #
 # Every job runs detached (nohup) with <home>/setup/<job>/{log,exit,done}; a job whose `done` marker holds the
 # checksum of its current command is skipped, so rerunning resumes after an interruption or a failure (downloads
@@ -94,9 +95,7 @@ if [ -n "$SOURCE_URL" ]; then
   add source "" "mkdir -p '$P/src' '$P/work' && cd '$P' && { [ -s src/source.mp4 ] || yt-dlp -N 8 --http-chunk-size 10M $COOKIES -f 'bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b' --merge-output-format mp4 --write-auto-subs --sub-langs ja -o 'src/source.%(ext)s' '$SOURCE_URL'; } && { [ -s work/base_1080p.mp4 ] || { dec=\$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name -of csv=p=0 src/source.mp4); [ \"\$dec\" = av1 ] && dec='-c:v libdav1d' || dec=''; ffmpeg -hide_banner -loglevel error -y \$dec -i src/source.mp4 -vf 'scale=1920:1080:flags=lanczos,fps=30' -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -c:a aac -b:a 192k -ar 48000 -ac 2 work/base_1080p.part.mp4 && mv work/base_1080p.part.mp4 work/base_1080p.mp4; }; }"
 fi
 
-ids() {
-  if [ "$STATUS_ONLY" = 1 ]; then ls "$STATE"; else printf '%s' "$JOBS" | cut -d'|' -f1; fi
-}
+ids() { printf '%s' "$JOBS" | cut -d'|' -f1; }  # --status checks the jobs these options expect, not what exists
 deps_of() { printf '%s' "$JOBS" | awk -F'|' -v id="$1" '$1 == id { print $2 }'; }
 cmd_of() { printf '%s' "$JOBS" | awk -v id="$1" 'index($0, id "|") == 1 { sub("^[^|]*\\|[^|]*\\|", ""); print }'; }
 
@@ -193,6 +192,14 @@ wait_all() {
 write_env() {
   snap=$(ls -d "$HF_HOME"/hub/models--Qwen--Qwen3-TTS-12Hz-1.7B-Base/snapshots/*/ 2>/dev/null | head -1)
   snap="${snap%/}"
+  missing=""
+  [ -n "$snap" ] && [ -f "$snap/config.json" ] || missing="$missing Qwen3-TTS snapshot;"
+  for py in "$TTS/bin/python" "$ASR/bin/python"; do [ -x "$py" ] || missing="$missing $py;"; done
+  [ "$DEMUCS" = 0 ] || [ -x "$SEP/bin/python" ] || missing="$missing $SEP/bin/python;"
+  if [ -n "$missing" ]; then
+    echo "env.sh not written, missing:$missing rerun setup.sh"
+    return 1
+  fi
   cat > "$HOME_DIR/env.sh" <<EOF
 export VIE_HOME='$HOME_DIR'
 export HF_HOME='$HF_HOME'
@@ -217,12 +224,15 @@ finish() {
       tail -n 15 "$STATE/$id/log" 2>/dev/null
     fi
   done
-  [ $env_ready = 1 ] && write_env
+  if [ $env_ready = 1 ]; then write_env || exit 1; fi
   [ $failed = 0 ] || { echo "rerun setup.sh to retry the failed jobs (finished ones are skipped)"; exit 1; }
   exit 0
 }
 
-if [ "$STATUS_ONLY" = 1 ]; then wait_all; finish; fi
+if [ "$STATUS_ONLY" = 1 ]; then
+  [ -n "$(ls "$STATE")" ] || { echo "nothing started under $HOME_DIR"; exit 1; }
+  wait_all; finish
+fi
 check_prereqs
 launch
 if [ "$MODE" = sequential ]; then report; finish; fi

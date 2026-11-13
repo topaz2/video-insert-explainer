@@ -59,7 +59,8 @@ The skill starts `skills/video-insert-explainer/scripts/setup.sh` in the backgro
 Python environments, downloads every model and, with `--source <url> --project <dir>`, downloads the video and
 makes the 1080p work copy, all in parallel while Claude writes the script. It is idempotent and resumable;
 caches live in `~/.cache/video-insert-explainer` (or `$VIE_HOME` / `--home`). On a fresh machine the
-environment and models (about 9 GB) took 255 s in parallel against 395 s one job after another (measured); see
+environment and models (about 9 GB) took 255 s in parallel (measured), against 395 s summed over the jobs run one
+at a time; see
 "Fast path" in `SKILL.md`. If YouTube asks to confirm you are not a bot, rerun with `--cookies-from-browser <browser>`.
 
 ## Rights

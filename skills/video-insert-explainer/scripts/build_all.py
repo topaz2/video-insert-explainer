@@ -84,8 +84,11 @@ def kill_group(p):
 
 
 def stop(running):
-    for p, _, log in running.values():
+    signal.signal(signal.SIGINT, signal.SIG_IGN)  # a second Ctrl-C must not leave the remaining stages running
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    for p, _, _ in running.values():
         kill_group(p)
+    for p, _, log in running.values():
         p.wait()
         log.close()
 
@@ -97,6 +100,7 @@ def interrupted(*_):
 def run_graph(stages, logs, sequential):
     t_start, pending, running, done = time.time(), list(stages), {}, {}
     clock = lambda: time.time() - t_start  # noqa: E731
+    signal.signal(signal.SIGINT, interrupted)  # also when started in the background, where SIGINT comes in ignored
     signal.signal(signal.SIGTERM, interrupted)
     try:
         while pending or running:
@@ -131,6 +135,9 @@ def run_graph(stages, logs, sequential):
         stop(running)
         print(f"[{clock():7.1f}s] interrupted; stopped {', '.join(running) or 'nothing'}", flush=True)
         return 130
+    except BaseException:
+        stop(running)
+        raise
     print(f"{'stage':10} {'start':>8} {'end':>8} {'took':>8}")
     for name, (t0, t1) in done.items():
         print(f"{name:10} {t0:8.1f} {t1:8.1f} {t1 - t0:8.1f}")

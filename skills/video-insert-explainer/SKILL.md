@@ -14,11 +14,13 @@ katakana long-vowel spelling of the key word), `subtitles.json` (the display tex
 `project.example.json`.
 
 All scripts live in `~/.claude/skills/video-insert-explainer/scripts/` and read one project config
-(`scripts/examples/project.example.json`, fictional values; each script's docstring is its contract).
+(`scripts/examples/project.example.json` has fictional values, `default-video.json` the measured values of the
+default video; each script's docstring is its contract).
 
 ## Rights gate (before any download or voice work)
 
-- Download only the URL the user gave; the output stays a local file and the user decides on any publication.
+- Download only the URL the user gave, or the default video below when the user names none; the output stays a
+  local file and the user decides on any publication.
 - Cloning a person's or character's voice needs the user's explicit choice for THIS video: set
   `rights.voice_clone_authorized: true` in this project's config. `clone_say.py` refuses any other value.
   Never copy the flag from an earlier project. Never produce output that passes for a real person's statement.
@@ -37,6 +39,37 @@ All scripts live in `~/.claude/skills/video-insert-explainer/scripts/` and read 
 | Narrator | which on-screen character speaks; their clean lines become the clone reference |
 | Output | default 1920x1080, 30 fps, H.264 crf 18, AAC 48 kHz, -14 LUFS / -1 dBTP, local mp4 |
 
+## Default video (when the user names no video)
+
+Unless the user names another video, build on https://www.youtube.com/watch?v=fxS4P6IhKxs (channel
+@AiLabokoikoi, https://www.youtube.com/channel/UCJaIMlyiJSBSgOJVieE_2Hw) with the ready preset
+`scripts/examples/default-video.json`. Ask only for the slides (and anything genuinely missing, such as which
+announcement they describe); the insert point, the circular → feature-update analogy, the narrator and every
+replacement site are already in the preset. The rights gate still applies: ask the user to confirm voice cloning
+for this video and set `rights.voice_clone_authorized: true` in the project copy, never in the preset.
+
+What the preset holds (measured on the source; `default_video` carries the recipes, `plates` / `audio` / `checks`
+are read by the scripts as is):
+- Cut 51.65 s (freeze frame 51.633), right after the delivery scene; the insert returns to 51.65 with the white flash.
+- Characters by description: narrator = the white-haired person in patterned clothes who delivers the item;
+  listener = the person in the green sweater who receives it.
+- Voice references (`default_video.references`): calm = 48.50-50.02 + 0.30 s silence + 54.45-55.25 (mix, no
+  music there); shout = 19.80-21.60, 42.20-42.55, 43.30-43.80 joined with 0.30 s gaps, from the demucs vocals of
+  the 17.0-60.0 excerpt.
+  Cut each part with `ffmpeg -ss <s> -t <len>`, join, and write the transcript from `text` next to it.
+- Spoken replacements: S1 = whole shouted line (source line 19.80-21.50, context 18.30-23.00, new line measured
+  19.83-21.67) via `clone_say.py` with the shout reference (a copy of project.json whose `tts.ref_*` point at it),
+  then `line_replace.py --stem-start 17.0 --context 18.30 23.00 --line 19.80 21.50`; S2 = word in 48.40-49.00
+  read inside `carrier_text` with the calm reference, `word_tools.py extract`, then
+  `fit_word.py --slot 0.60 --max-tempo 1.10 --match <work copy> --range 48.50 49.00`.
+- Burned-in text: plates V1-V6 (mission banner, two captions, a split-screen caption, a zooming prompt field in
+  three stages, an inset caption).
+- Interjections (`default_video.interjections`): the listener's two short reactions, cut with the
+  `interjection_recipe` commands (sound with 10/30 ms fades; face inset crop scaled to 384x216 with a 6 px white
+  border); in the events use `pip_pos` [1500, 620] and caption color #8FD694.
+- Loudness: the source dialogue just before the cut (40.0-51.6, `qa.dialogue`) measures -13.1 LUFS on the work copy.
+The slides and their names, wording and people stay out of the preset; it carries the video side only.
+
 ## Environment
 
 - ffmpeg/ffprobe (this build may lack drawtext/subtitles - all text is drawn with Pillow), yt-dlp, uv.
@@ -50,8 +83,9 @@ All scripts live in `~/.claude/skills/video-insert-explainer/scripts/` and read 
 
 ## Pipeline
 
-0. **Project folder.** Make a work folder and copy `scripts/examples/project.example.json` (as `project.json`),
-   `sentences.json`, `subtitles.json` and `events.template.json` into it; replace every example value.
+0. **Project folder.** Make a work folder and copy `scripts/examples/project.example.json` (as `project.json`;
+   for the default video copy `default-video.json` instead), `sentences.json`, `subtitles.json` and
+   `events.template.json` into it; replace every example value (with the preset, only the slide and narration side).
    Leave `rights.voice_clone_authorized` false; set it to true only after the user chose to clone the voice.
 1. **Download + work copy.** `yt-dlp -f "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b" --merge-output-format mp4 --write-auto-subs --sub-langs ja -o "src/source.%(ext)s" <url>`.
    Transcode once: `ffmpeg -c:v libdav1d -i src/source.mp4 -vf "scale=1920:1080:flags=lanczos,fps=30" -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -c:a aac -b:a 192k -ar 48000 -ac 2 work/base_1080p.mp4`.
@@ -156,3 +190,9 @@ final check). The lead routes; only the user can judge how the voice sounds.
 The mp4 plays end to end; `check_output.py` exits 0; every plate and replacement passed its frame strip;
 the subtitles equal the script; QA's final report is clean; the user has listened to the voice and replaced
 words; the asset/rights table is written. Report the output path, length and what was left to taste.
+
+## Credit
+
+The default preset is built on a video by the YouTube channel @AiLabokoikoi
+(https://www.youtube.com/channel/UCJaIMlyiJSBSgOJVieE_2Hw). The video is not redistributed; its use is subject to
+the creator's terms, and the credit does not imply the creator's permission or endorsement.

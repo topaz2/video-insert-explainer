@@ -10,11 +10,11 @@ description: "既存の動画を選んだ場面で止め、ナレーション付
 
 語そのものの例は `scripts/examples/` にある：`sentences.json`（読み上げの文。大事な語は伸ばす音を「ー」で書いたカタカナ）、`subtitles.json`（画面に出す字幕）、`project.example.json` の板。
 
-スクリプトはすべて `~/.claude/skills/video-insert-explainer/scripts/` にあり、1 つのプロジェクト設定（`scripts/examples/project.example.json`。値は架空）を読む。各スクリプトの使い方は、ファイル冒頭の説明文に書いてある。
+スクリプトはすべて `~/.claude/skills/video-insert-explainer/scripts/` にあり、1 つのプロジェクト設定（`scripts/examples/project.example.json` は架空の値、`default-video.json` は既定の動画で測った値）を読む。各スクリプトの使い方は、ファイル冒頭の説明文に書いてある。
 
 ## 権利の確認（ダウンロードと声の作業の前に）
 
-- ダウンロードするのは、ユーザーが示した URL だけ。出力は手元のファイルにとどめ、公開するかどうかはユーザーが決める。
+- ダウンロードするのは、ユーザーが示した URL だけ（示されなければ、下の既定の動画）。出力は手元のファイルにとどめ、公開するかどうかはユーザーが決める。
 - 人物やキャラクターの声の複製は、**この動画について**ユーザーがはっきり選んだときだけ行う。このプロジェクトの設定に `rights.voice_clone_authorized: true` を書く。`clone_say.py` は、それ以外の値なら止まる。前のプロジェクトの設定から写さない。実在の人物の発言と取り違えられるものは作らない。
 - macOS の `say` の声は、時刻を組むための仮の声にだけ使う（個人的・非商用の利用に限られる）。完成版には残さない。
 - 素材ごとの出どころと使ってよい範囲を、編集リストに書く（元動画・スライド・複製した声・元動画から切り出した相づち・自作の効果音）。
@@ -30,6 +30,20 @@ description: "既存の動画を選んだ場面で止め、ナレーション付
 | 語り手 | 画面のどの人物が話すか。その人のきれいなセリフを声の手本にする |
 | 出力 | 既定は 1920x1080・30fps・H.264 crf 18・AAC 48kHz・-14 LUFS / -1 dBTP、手元の mp4 |
 
+## 既定の動画（ユーザーが動画を示さないとき）
+
+ほかの動画を示されない限り、https://www.youtube.com/watch?v=fxS4P6IhKxs （チャンネル「AI動画ラボコイコイ」、https://www.youtube.com/channel/UCJaIMlyiJSBSgOJVieE_2Hw ）を使い、用意済みの設定 `scripts/examples/default-video.json` から始める。ユーザーに聞くのはスライドだけ（と、本当に足りないもの。たとえば何のお知らせのスライドか）。挿入の位置、回覧板 → 機能追加の見立て、語り手、差し替える箇所はすべて設定に入っている。権利の確認はそのまま必要：この動画で声を複製してよいかをユーザーに確かめ、`rights.voice_clone_authorized: true` はプロジェクトの写しにだけ書く（既定の設定には書かない）。
+
+設定に入っているもの（元動画で測った値。`default_video` は作り方、`plates`・`audio`・`checks` はスクリプトがそのまま読む）：
+- 切れ目は 51.65 秒（止めるコマは 51.633 秒）。届ける場面の直後。戻りは 51.65 秒から、白フラッシュを挟む。
+- 人物は見た目で呼ぶ。語り手＝白髪で柄物の服の人（届ける側）。聞き手＝緑のセーターの人（受け取る側）。
+- 声の手本（`default_video.references`）：落ち着いた声＝48.50–50.02 秒＋無音 0.30 秒＋54.45–55.25 秒（音楽が無いので元の音のまま）。叫び＝19.80–21.60・42.20–42.55・43.30–43.80 秒を 0.30 秒の無音でつないだもので、17.0–60.0 秒の抜き出しに demucs をかけた声のほうから取る。それぞれ `ffmpeg -ss <始まり> -t <長さ>` で切ってつなぎ、`text` の書き起こしを横に置く。
+- セリフの差し替え：S1＝叫びのセリフ全体（元のセリフ 19.80–21.50 秒、前後 18.30–23.00 秒、作り直したセリフは測ると 19.83–21.67 秒）。叫びの手本で `clone_say.py`（`tts.ref_*` を叫びの手本に向けた project.json の写しで）、続けて `line_replace.py --stem-start 17.0 --context 18.30 23.00 --line 19.80 21.50`。S2＝48.40–49.00 秒の語。落ち着いた声の手本で `carrier_text` の文の中で読ませ、`word_tools.py extract` で切り出し、`fit_word.py --slot 0.60 --max-tempo 1.10 --match <変換版> --range 48.50 49.00`。
+- 画面の文字：板 V1〜V6（ミッション表示、字幕 2 つ、分割画面の字幕、2 回ズームするプロンプト入力欄の 3 段階、はめ込み画面の字幕）。
+- 相づち（`default_video.interjections`）：聞き手の短い反応 2 つ。`interjection_recipe` のコマンドで切り出す（音は頭 10 ミリ秒・終わり 30 ミリ秒のフェード、顔の小窓は 384x216 に縮めて白い縁 6px）。演出の時刻の側では `pip_pos` [1500, 620]、字幕の色 #8FD694 を使う。
+- 音量：切れ目の直前の元のセリフ（40.0–51.6 秒、`qa.dialogue`）は、変換版で測ると -13.1 LUFS。
+スライドと、そこに出てくる名前・文言・人物は設定に入れない。設定に入るのは動画の側だけ。
+
 ## 環境
 
 - ffmpeg / ffprobe（drawtext や subtitles が無い版でも動くよう、文字はすべて Pillow で描く）、yt-dlp、uv。
@@ -41,7 +55,7 @@ description: "既存の動画を選んだ場面で止め、ナレーション付
 
 ## 手順
 
-0. **作業場所**：作業用のフォルダを作り、`scripts/examples/` の `project.example.json`（`project.json` という名前で）・`sentences.json`・`subtitles.json`・`events.template.json` を写す。例の値はすべて置き換える。`rights.voice_clone_authorized` は false のまま始め、ユーザーが声の複製を選んでから true にする。
+0. **作業場所**：作業用のフォルダを作り、`scripts/examples/` の `project.example.json`（`project.json` という名前で。既定の動画なら代わりに `default-video.json`）・`sentences.json`・`subtitles.json`・`events.template.json` を写す。例の値はすべて置き換える（既定の設定なら、スライドとナレーションの側だけ）。`rights.voice_clone_authorized` は false のまま始め、ユーザーが声の複製を選んでから true にする。
 1. **ダウンロードと作業用の変換版**：`yt-dlp -f "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b" --merge-output-format mp4 --write-auto-subs --sub-langs ja -o "src/source.%(ext)s" <url>`。
    一度だけ変換する：`ffmpeg -c:v libdav1d -i src/source.mp4 -vf "scale=1920:1080:flags=lanczos,fps=30" -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -c:a aac -b:a 192k -ar 48000 -ac 2 work/base_1080p.mp4`。
    以降はすべて変換版を読む（4K の AV1 をコマごとに読むと遅すぎる）。字幕の時刻は元動画のコマの刻み（`source.measured_fps`、多くは 60）で測る。30fps の変換版では 1 コマだけの字幕が見えないことがある。
@@ -91,3 +105,7 @@ description: "既存の動画を選んだ場面で止め、ナレーション付
 ## 完了の条件
 
 mp4 が最後まで再生できる。`check_output.py` が 0 で終わる。すべての板と差し替えが並べ図の確認を通っている。字幕が台本と一致している。QA の最終確認に指摘が残っていない。ユーザーが声と差し替えた語を聞いている。素材と権利の表が書いてある。報告には、出力のパス・長さ・好みで決める余地として残したことを書く。
+
+## クレジット
+
+既定の設定は、YouTube チャンネル「AI動画ラボコイコイ」（@AiLabokoikoi）さんの動画をもとにしている。動画そのものは配布しない。動画の利用は作者の定める条件に従う。このクレジットは、作者の許諾や推奨を意味しない。

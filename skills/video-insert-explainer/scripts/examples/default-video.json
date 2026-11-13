@@ -1,0 +1,110 @@
+{
+ "_about": "Default-video preset: a ready project config for the video the skill assumes when the user names no other video. Copy it as project.json; only the slides, the narration (sentences.json / subtitles.json) and the slide-driven events are still to be supplied. Values were measured on this video (source times in seconds, 1080p coordinates). rights.voice_clone_authorized stays false here: set it in the project copy only after the user chose voice cloning for this video.",
+ "fps": 30,
+ "sample_rate": 48000,
+ "work_dir": "work",
+ "rights": {"voice_clone_authorized": false, "output": "local file only; the user decides on any publication"},
+ "source": {
+  "url": "https://www.youtube.com/watch?v=fxS4P6IhKxs",
+  "credit": {"channel": "AI動画ラボコイコイ", "handle": "@AiLabokoikoi", "channel_url": "https://www.youtube.com/channel/UCJaIMlyiJSBSgOJVieE_2Hw"},
+  "file": "src/source.mp4", "work_copy": "work/base_1080p.mp4", "measured_fps": 60,
+  "_measured": "3840x2160 AV1 60 fps, 496.00 s, AAC 44.1 kHz stereo"
+ },
+ "cut": {"time": 51.65,
+  "_why": "Right after the delivery scene: the receiver's thank-you ends at 51.55, the next caption appears at 51.667 (one 60 fps frame). Freeze frame 51.633 (last frame without that caption); dialogue valley 51.60-51.75 (-31 to -41 dBFS). The insert returns to 51.65 in the same shot, so the built-in white flash is required."},
+ "slides": ["slides/01.png"],
+ "events_template": "events.template.json",
+ "events": "work/events.json",
+ "narration": {
+  "sentences": "sentences.json", "subtitles": "subtitles.json",
+  "clips_dir": "work/narration/clips", "timeline": "work/narration/timeline.json", "full": "work/narration/narration_full.wav",
+  "start": 2.6, "gap": 0.10, "page_breath": 0.8, "page_breath_overrides": {}, "end_pad": 0.5,
+  "take": {}
+ },
+ "tts": {"python": "tts/.venv/bin/python", "ref_wav": "tts/ref/calm.wav", "ref_text": "tts/ref/calm.txt",
+         "model": "tts/hf/hub/models--Qwen--Qwen3-TTS-12Hz-1.7B-Base/snapshots/<rev>", "device": "auto", "say_voice": "Kyoko"},
+ "style": {"font_pattern": "/System/Library/Fonts/ヒラギノ角ゴシック W{}.ttc", "max_chars": 28, "sub_size": 44, "sub_weight": 6,
+           "sub_stroke": 5, "sub_bottom": 1040, "line_gap": 1.40, "head_size": 64, "head_weight": 8, "head_top": 60},
+ "default_video": {
+  "_about": "Facts about this video that the pipeline steps need. Each recipe names the script or command that consumes it (SKILL.md, 'Default video').",
+  "analogy": {"object": "回覧板", "announced": "機能追加", "tts_reading": "キノーツイカ",
+   "_note": "The TTS gets the kanji 機能追加 inside a sentence (hiragana is read as a homophone); a word said alone is extracted from a short sentence."},
+  "characters": {
+   "narrator": "white-haired person in patterned clothes who delivers the item (speaks S1, S2 and the reference lines)",
+   "listener": "person in the green sweater who receives the item (interjections come from this person)"
+  },
+  "references": {
+   "calm": {"out": "tts/ref/calm.wav", "text": "回覧板置きに来たのよ。そうねぇ。",
+            "parts": [[48.50, 50.02], [54.45, 55.25]], "gap": 0.30,
+            "_note": "No music under these lines, so the mix is used as is (no demucs). Joined with 0.30 s of silence."},
+   "shout": {"out": "tts/ref/shout.wav", "text": "田中さん回覧板だ！おら！おい！起きろ！！",
+             "parts": [[19.80, 21.60], [42.20, 42.55], [43.30, 43.80]], "gap": 0.30,
+             "_note": "Shouted reference for S1 only; take the parts from the demucs vocals stem (stem.start below)."}
+  },
+  "stem": {"start": 17.0, "end": 60.0, "out_dir": "work/demucs",
+           "_note": "Excerpt for demucs --two-stems vocals -n htdemucs_ft; line_replace.py --stem-start uses start."},
+  "spoken": [
+   {"id": "S1", "kind": "line", "speaker": "narrator", "register": "shout",
+    "source_line": [19.80, 21.50], "context": [18.30, 23.00], "measured_new_line": [19.83, 21.67],
+    "text": "田中さん機能追加だ！おら！", "ref": "shout", "seed_that_worked": 1, "max_tempo": 1.10,
+    "out": "work/replace/S1_line.wav",
+    "_note": "The shouted word alone needed 1.25x to fit its 0.55 s slot (1.44x was heard as a different word) and the line lost intelligibility, so the whole line is regenerated over the accompaniment. No extra processing on the chosen take. line_replace.py with these arguments places it at 19.80-21.64 (1.10x); the delivered take sat 30 ms later (19.83-21.67)."},
+   {"id": "S2", "kind": "word", "speaker": "narrator", "register": "calm",
+    "slot": [48.40, 49.00], "word_from": 48.50, "carrier_text": "キノーツイカ置きに来たのよ", "ref": "calm",
+    "seed_that_worked": 11, "max_tempo": 1.10, "delivered_tempo": 1.092,
+    "out": "work/replace/S2_word.wav",
+    "_note": "48.40-48.50 is a silent gap used as slot room. Said alone the word took 0.8-1.7 s and fell after the second mora, so it is read inside the carrier sentence and extracted (word_tools.py extract). fit_word.py on the delivered extraction gives about 0.61 s at about 1.08x."}
+  ],
+  "visual": "plates V1-V6 below; V4 and V6 are video-only replays (no audible speech under them, confirmed by cross-correlation), so they need no re-voicing",
+  "interjections": [
+   {"text": "あら", "sound": [50.05, 50.55], "sound_out": "interjections/ara.wav",
+    "pip_time": 50.3, "pip_crop": [960, 540, 960, 85], "pip_out": "interjections/pip_ara.png", "mood": "smiling"},
+   {"text": "あれ？", "sound": [45.10, 45.45], "sound_out": "interjections/are.wav",
+    "pip_time": 45.25, "pip_crop": [960, 540, 880, 85], "pip_out": "interjections/pip_are.png", "mood": "surprised"}
+  ],
+  "interjection_recipe": {
+   "sound": "ffmpeg -ss <s0> -t <s1-s0> -i src/source.mp4 -vn -af \"afade=t=in:d=0.01,afade=t=out:st=<len-0.03>:d=0.03,aresample=48000,aformat=channel_layouts=stereo\" <sound_out>",
+   "pip": "ffmpeg -ss <pip_time> -i work/base_1080p.mp4 -frames:v 1 -vf \"crop=<w>:<h>:<x>:<y>,scale=384:216,pad=396:228:6:6:white\" <pip_out>",
+   "events": "pip_pos [1500, 620]; caption color #8FD694 (matches the green sweater); show from 0.1 s before the sound for 0.9 s; place each in a narration gap"
+  },
+  "loudness": {"source_dialogue_lufs": -13.1, "window": [40.0, 51.6], "_note": "Integrated loudness of the work copy over the dialogue just before the cut (same window as qa.dialogue); set audio.narration_gain_db so the narration matches it."}
+ },
+ "plates": [
+  {"id": "V1", "start": 3.533, "end": 18.150, "rect": [585, 952, 1331, 1042], "color": "#000000", "radius": 25, "feather": 6,
+   "text": {"runs": [["機能追加", "#F74601", "#280A00"], ["を田中さんに届けろ", "#FBFBFB", "#141414"]], "left": 620, "top": 973, "weight": 6, "size": 52, "stroke": 2},
+   "_what": "mission banner, bottom center; only the object word is orange"},
+  {"id": "V2", "start": 19.733, "end": 22.983, "rect": [650, 1008, 1255, 1068], "color": "#000000",
+   "text": {"runs": [["田中さん機能追加だ！おら！", "#FDFDFD", null]], "left": 679, "top": 1018, "weight": 5, "size": 42},
+   "_what": "caption of S1 in the bottom black band"},
+  {"id": "V3", "start": 48.400, "end": 49.917, "rect": [700, 1008, 1215, 1068], "color": "#000000",
+   "text": {"runs": [["機能追加置きに来たのよ", "#FDFDFD", null]], "left": 727, "top": 1018, "weight": 5, "size": 42},
+   "_what": "caption of S2"},
+  {"id": "V4", "start": 343.200, "end": 343.417, "rect": [1426, 1012, 1820, 1062], "color": "#000000",
+   "text": {"runs": [["機能追加だ！おら！", "#FDFDFD", null]], "left": 1431, "top": 1018, "weight": 5, "size": 42},
+   "_what": "right half of a split screen; the name before the word is kept (it touches the left caption)"},
+  {"id": "V5", "text": {"text": "機能追加を持っている"}, "fill": "#BBAFA8", "weight": 6, "feather_ratio": 0.13,
+   "_what": "prompt input field of an AI video tool; the picture zooms twice, so three stages with per-frame interpolation between them",
+   "stages": [
+    {"t0": 413.617, "t1": 414.400, "left": 989.0, "top": 392.0, "size": 23.5, "rect": [986, 386, 1238, 420], "c0": "#1A0801", "c1": "#170701", "blur": 0.6},
+    {"t0": 414.567, "t1": 421.033, "left": 979.5, "top": 371.0, "size": 15.8, "rect": [977, 367, 1146, 390], "c0": "#1C0902", "c1": "#1A0801", "blur": 0.4},
+    {"t0": 421.234, "t1": 424.050, "left": 390.5, "top": 200.0, "size": 27.4, "rect": [387, 193, 671, 232], "c0": "#150500", "c1": "#130400", "blur": 0.7}]},
+  {"id": "V6", "start": 446.500, "end": 449.750, "rect": [316, 480, 590, 512], "color": "#000000",
+   "text": {"runs": [["田中さん機能追加だ！おら！", "#FDFDFD", null]], "left": 332, "top": 487, "weight": 5, "size": 19},
+   "_what": "caption inside the top-left inset"}
+ ],
+ "audio": {"narration_gain_db": 0.0, "extra_db": 0.0, "fade_at_cut": 0.05,
+  "replacements": [
+   {"type": "line", "file": "work/replace/S1_line.wav", "start": 18.30, "xfade": 0.03},
+   {"type": "word", "file": "work/replace/S2_word.wav", "start": 48.40, "xfade": 0.02}]},
+ "master": {"I": -14, "TP": -1, "LRA": 11},
+ "qa": {"sync_times": [30.0, 200.0, 400.0, 490.0], "dialogue": [40.0, 11.6]},
+ "checks": [
+  {"group": "V1", "picks": [["o", 3.5, "before"], ["o", 3.533, "first"], ["o", 10.833, "middle"], ["o", 18.133, "last"], ["o", 18.167, "after"]]},
+  {"group": "V2 / S1", "picks": [["o", 19.7, "before"], ["o", 19.733, "first"], ["o", 21.333, "middle"], ["o", 22.967, "last"], ["o", 23.0, "after"]]},
+  {"group": "V3 / S2", "picks": [["o", 48.367, "before"], ["o", 48.4, "first"], ["o", 49.133, "middle"], ["o", 49.9, "last"], ["o", 49.933, "after"]]},
+  {"group": "cut", "picks": [["o", 51.633, "last frame before"], ["T", 0.0, "insert head"], ["T", 0.4, "rise"], ["o", 51.667, "first frame after (flash fading)"], ["o", 51.767, "after the flash"]]},
+  {"group": "V4", "picks": [["o", 343.167, "before"], ["o", 343.2, "first"], ["o", 343.3, "middle"], ["o", 343.4, "last"], ["o", 343.433, "after"]]},
+  {"group": "V5", "picks": [["o", 413.6, "before"], ["o", 413.633, "first"], ["o", 414.467, "zoom 1"], ["o", 418.833, "middle"], ["o", 421.133, "zoom 2"], ["o", 424.033, "last"], ["o", 424.067, "after"]]},
+  {"group": "V6", "picks": [["o", 446.467, "before"], ["o", 446.5, "first"], ["o", 448.133, "middle"], ["o", 449.733, "last"], ["o", 449.767, "after"]]}
+ ]
+}

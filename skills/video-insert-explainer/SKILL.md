@@ -73,22 +73,60 @@ The slides and their names, wording and people stay out of the preset; it carrie
 
 ## Environment
 
-- ffmpeg/ffprobe (this build may lack drawtext/subtitles - all text is drawn with Pillow), yt-dlp, uv.
-- Media scripts: any Python with Pillow, numpy, soundfile, librosa (the TTS venv below has them).
-- TTS venv: `uv venv --python 3.12 tts/.venv` + `uv pip install -U qwen-tts "huggingface_hub[cli]" soundfile librosa`,
-  then `HF_HOME=tts/hf hf download Qwen/Qwen3-TTS-12Hz-1.7B-Base` and `... Qwen/Qwen3-TTS-Tokenizer-12Hz`
-  (Apache-2.0). Run with `HF_HOME` set and `HF_HUB_OFFLINE=1`; `tts.model` is the snapshot directory.
-- ASR/accent venv: `mlx-whisper pyopenjtalk-plus pyworld soundfile numpy` (whisper large-v3-turbo).
-- Stem separation (only for line replacement): separate venv with `demucs soundfile "torch<2.9" "torchaudio<2.9"`.
+- macOS on Apple silicon; Homebrew `ffmpeg` (this build may lack drawtext/subtitles - all text is drawn with
+  Pillow), `yt-dlp`, `uv`. `setup.sh` prints the `brew install` line for what is missing (`--install-tools` runs it).
+- `bash scripts/setup.sh` builds everything else in parallel, idempotent and resumable (see its header):
+  TTS venv (`qwen-tts`, Pillow, numpy, soundfile, librosa - it also runs every media script), ASR/accent venv
+  (`mlx-whisper pyopenjtalk-plus pyworld`, `setuptools<81` because pyworld imports `pkg_resources`), stem-separation
+  venv (`demucs`, `torch<2.9`; `--no-demucs` skips it), Qwen3-TTS Base + tokenizer (Apache-2.0), whisper
+  large-v3-turbo (MLX) and the htdemucs_ft weights. A model download whose files stop growing for 180 s is
+  restarted (up to 3 times; it resumes - one stalled for good once). Everything lives under `$VIE_HOME` (default
+  `~/.cache/video-insert-explainer`, shared by all projects; `--home DIR` moves it). Afterwards
+  `source $VIE_HOME/env.sh` gives `HF_HOME`, `TORCH_HOME`, `HF_HUB_OFFLINE=1`, `VIE_TTS_PY` / `VIE_ASR_PY` /
+  `VIE_SEP_PY` and `VIE_TTS_MODEL`; put `VIE_TTS_PY` in `tts.python` and `VIE_TTS_MODEL` (the snapshot directory) in
+  `tts.model`, and run score.py and demucs with that environment.
 - Run long jobs (transcode, TTS batches, demucs, render) detached with `nohup ... ; echo $? > exit.txt`.
+
+## Fast path (first run)
+
+Start the slow parts the moment the request is understood and write while they run:
+
+1. **t = 0, background** (`run_in_background`): `bash ${CLAUDE_SKILL_DIR}/scripts/setup.sh --source <url> --project <dir>`
+   - venvs, models, download + work copy as detached parallel jobs (`--status` waits and reports; rerun resumes).
+   Meanwhile: project folder (step 0), fetch the slides, write the script and edit list (step 4), QA gate,
+   ask the rights question. With the default video the preset already holds steps 2-3.
+2. **Work copy ready**: cut point and word search (steps 2-3, another video only; whisper over the source runs
+   before any TTS).
+3. **Gate passed and voice cloning chosen**: cut the references, then `build_narration.py --engine clone`
+   (GPU). Beside it on the CPU: `plates.py` + `check_plates.py`, interjection cuts, `make_sfx.py`, and demucs
+   with `-d cpu` for a line replacement.
+4. **After generation, never during it**: `score.py`, then the listening page for the user.
+5. `preview.py`, then `build_all.py` (stage graph; `--narrate` folds step 3's TTS in when no picks are pending).
+
+Measured on one Apple-silicon machine (12 cores, 48 GB), empty caches, default video:
+
+| Part | One by one | Parallel |
+|---|---|---|
+| `setup.sh` without a video (3 venvs, 4 models, ~9 GB) | ~395 s | 255 s (TTS venv is the longest job) |
+| `setup.sh` with the video (+ download, transcode) | ~627 s | 784 s before chunked downloads (586 s of it the download); with them ~260-300 s expected, not re-measured (the site then asked for a bot check) |
+| Download, 476 MB (one connection was throttled to ~1 MB/s) | 586 s | 60 s with `-N 8 --http-chunk-size 10M` |
+| Transcode 4K AV1 -> 1080p30 | ~200 s | (inside setup) |
+| Narration, 7 sentences | 39 s, 1 worker | 44 s with 2 (so a 2nd worker starts only with >= 6 left) |
+| Candidates, 21 takes | 70 s, 1 worker | 56 s, 2 workers 25 s apart |
+| demucs `-d cpu`, 43 s excerpt, beside the 21 takes | 52 s + 56 s | 57 s / TTS 62 s |
+| `build_all.py` (8.8 min source, 31 s insert) | 213 s | 196 s (assemble's re-encode: 146 s) |
 
 ## Pipeline
 
 0. **Project folder.** Make a work folder and copy `scripts/examples/project.example.json` (as `project.json`;
    for the default video copy `default-video.json` instead), `sentences.json`, `subtitles.json` and
    `events.template.json` into it; replace every example value (with the preset, only the slide and narration side).
+   `tts.python` and `tts.model` come from `$VIE_HOME/env.sh` (`setup.sh` prints both).
    Leave `rights.voice_clone_authorized` false; set it to true only after the user chose to clone the voice.
-1. **Download + work copy.** `yt-dlp -f "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b" --merge-output-format mp4 --write-auto-subs --sub-langs ja -o "src/source.%(ext)s" <url>`.
+1. **Download + work copy** (`setup.sh --source <url> --project <dir>` runs both as one background job).
+   `yt-dlp -N 8 --http-chunk-size 10M -f "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b" --merge-output-format mp4 --write-auto-subs --sub-langs ja -o "src/source.%(ext)s" <url>`
+   (ranged chunks: one plain connection was throttled to ~1 MB/s, 586 s against 60 s for the same 476 MB).
+   If the site answers "Sign in to confirm you're not a bot", rerun with `--cookies-from-browser <browser>`.
    Transcode once: `ffmpeg -c:v libdav1d -i src/source.mp4 -vf "scale=1920:1080:flags=lanczos,fps=30" -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -c:a aac -b:a 192k -ar 48000 -ac 2 work/base_1080p.mp4`.
    Every later step reads the work copy (seeking 4K AV1 per frame is too slow). Measure caption times on the
    source's own frame grid (`source.measured_fps`, often 60) - the 30 fps work copy can hide a 1-frame caption.
@@ -112,8 +150,11 @@ The slides and their names, wording and people stay out of the preset; it carrie
 5. **Reference + voice.** Cut 5-15 s of the narrator's cleanest lines (no music; use demucs vocals if needed;
    a shouted line needs its own shouted reference) with an exact transcript. Draft timing with `--engine say`,
    then `build_narration.py --engine clone`. `clone_say.py` retries a take that stops mid-sound (seed+1),
-   trims the head and adds 0.25 s of tail. For batches use `--jobs` with `SHARD=0/2` and `SHARD=1/2` in
-   parallel: 2 workers was the observed optimum on one Apple-silicon machine (4 workers were not faster).
+   trims the head and adds 0.25 s of tail. `build_narration.py` runs 2 workers started 25 s apart
+   (`--workers`, `tts.workers`, `tts.stagger`); for candidate batches start `clone_say.py --jobs <same file>`
+   twice, 20-30 s apart - workers take the next unclaimed job. Measured on one Apple-silicon machine: 7.9
+   takes/min with 1 worker, 11.0 with 2, 10.5 with 4; each model load peaks at ~4.2 GB. Never run whisper
+   (score.py, ASR) while TTS is generating - both slow down.
 6. **Pitch-accent repair.** Generate several seeds and spelling variants per sentence, `score.py` them
    (whisper reading + pyopenjtalk accent per phrase + flow), then `listen_page.py` for the user to pick;
    picks go into `narration.take`. What fixed misreads and wrong accents:
@@ -149,8 +190,12 @@ The slides and their names, wording and people stay out of the preset; it carrie
     the joke). Measure the source dialogue near the cut and the narration with `loudness.py measure`; set
     `audio.narration_gain_db` so they match; sound effects ~6 LU under the narration (`make_sfx.py` makes them).
     Master with two-pass linear loudnorm; if it falls back to dynamic, fix the mix gains instead of accepting it.
-12. **Render.** `build_all.py project.json out/final.mp4` (resolve → plates → telops → audio → loudnorm →
-    insert → assemble → checks). It never overwrites an existing output.
+12. **Render.** `build_all.py project.json out/final.mp4` runs the stages as a dependency graph: plates
+    alongside everything before assemble; telops → insert render alongside soundtrack → two-pass loudnorm;
+    then assemble (the full re-encode, ~3/4 of the render time); then
+    `check_output.py` and `verify_frames.py` together. `--narrate` adds the TTS stage in front (plates run
+    while it generates). Logs in `<work>/logs/`, a wall-clock table at the end; `--sequential` for a low-memory
+    machine. It never overwrites an existing output.
 13. **QA.** `check_output.py` (frame count, A/V lag at speech moments, loudness of whole/insert/source dialogue,
     black/freeze stretches) and `verify_frames.py` sheets from config `checks` (before/first/middle/last/after
     of each plate and replacement, the cut and return, every effect). The first frame after the white flash
@@ -175,6 +220,7 @@ final check). The lead routes; only the user can judge how the voice sounds.
 
 | Script | Role |
 |---|---|
+| `setup.sh` | first-run environment: venvs, models, download + work copy, in parallel and resumable |
 | `common.py`, `textlib.py` | config, single source of frame math (cut / insert / base frames, samples per frame), Pillow text |
 | `find_cut.py` | contact sheet, caption-band stack, RMS table |
 | `find_text.py`, `ocr_frames.swift` | on-screen word search (macOS Vision OCR) |

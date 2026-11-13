@@ -46,23 +46,43 @@ description: "既存の動画を選んだ場面で止め、ナレーション付
 
 ## 環境
 
-- ffmpeg / ffprobe（drawtext や subtitles が無い版でも動くよう、文字はすべて Pillow で描く）、yt-dlp、uv。
-- 映像・音声のスクリプト：Pillow・numpy・soundfile・librosa の入った Python（下の音声合成用の venv で足りる）。
-- 音声合成用の venv：`uv venv --python 3.12 tts/.venv` と `uv pip install -U qwen-tts "huggingface_hub[cli]" soundfile librosa`。続けて `HF_HOME=tts/hf hf download Qwen/Qwen3-TTS-12Hz-1.7B-Base` と `Qwen/Qwen3-TTS-Tokenizer-12Hz`（Apache-2.0）。実行時は `HF_HOME` を指定し `HF_HUB_OFFLINE=1`。`tts.model` には snapshot のディレクトリを書く。
-- 書き起こし・アクセント用の venv：`mlx-whisper pyopenjtalk-plus pyworld soundfile numpy`（whisper large-v3-turbo）。
-- 声と伴奏の分離（セリフ全体の差し替えのときだけ）：別の venv に `demucs soundfile "torch<2.9" "torchaudio<2.9"`。
+- Apple シリコンの macOS。Homebrew の `ffmpeg`（drawtext や subtitles が無い版でも動くよう、文字はすべて Pillow で描く）・`yt-dlp`・`uv`。足りないものがあれば `setup.sh` が `brew install` の行を出す（`--install-tools` を付けるとそのまま入れる）。
+- それ以外は `bash scripts/setup.sh` が並列にそろえる。何度流してもよく、途中で止まっても続きから再開する（使い方はファイル冒頭）。入るもの：音声合成用の venv（`qwen-tts`・Pillow・numpy・soundfile・librosa。映像・音声のスクリプトもこれで動く）、書き起こし・アクセント用の venv（`mlx-whisper pyopenjtalk-plus pyworld`。pyworld が `pkg_resources` を読むので `setuptools<81` も）、声と伴奏の分離用の venv（`demucs`・`torch<2.9`。`--no-demucs` で省く）、Qwen3-TTS の Base とトークナイザ（Apache-2.0）、MLX 版の whisper large-v3-turbo、htdemucs_ft の重み。モデルの取得でファイルが 180 秒増えなければ、止めて取り直す（最大 3 回。続きから取る。一度、取得が止まったまま動かなくなったことがある）。置き場所は `$VIE_HOME`（既定は `~/.cache/video-insert-explainer`。すべてのプロジェクトで共用。`--home DIR` で変えられる）。終わったら `source $VIE_HOME/env.sh` で `HF_HOME`・`TORCH_HOME`・`HF_HUB_OFFLINE=1`・`VIE_TTS_PY` / `VIE_ASR_PY` / `VIE_SEP_PY`・`VIE_TTS_MODEL` が入る。`tts.python` に `VIE_TTS_PY`、`tts.model` に `VIE_TTS_MODEL`（snapshot のディレクトリ）を書き、score.py と demucs はこの環境で動かす。
 - 長い処理（変換・音声合成の一括・demucs・書き出し）は `nohup ... ; echo $? > exit.txt` で切り離して流す。
+
+## 速い進め方（初回）
+
+依頼の中身がわかった時点で時間のかかるものを始め、待つ間に書く：
+
+1. **すぐ・裏で**（`run_in_background`）：`bash ${CLAUDE_SKILL_DIR}/scripts/setup.sh --source <url> --project <dir>`。venv・モデル・ダウンロードと変換版を、切り離した処理として並列に流す（`--status` で終わるまで待って状況を出す。流し直すと続きから）。その間に、作業場所（手順 0）、スライドの取得、台本と編集リスト（手順 4）、QA の関門、権利の確認をする。既定の動画なら手順 2〜3 は設定に入っている。
+2. **変換版ができたら**：切れ目と語の検索（手順 2〜3。ほかの動画のときだけ。元動画の whisper は音声合成より前に流す）。
+3. **関門を通り、声の複製が選ばれたら**：声の手本を切り出し、`build_narration.py --engine clone`（GPU）。その横で CPU の作業：`plates.py` と `check_plates.py`、相づちの切り出し、`make_sfx.py`、セリフ全体の差し替えなら `-d cpu` の demucs。
+4. **合成が終わってから（最中には流さない）**：`score.py`、続けてユーザー向けの試聴ページ。
+5. `preview.py`、続けて `build_all.py`（段の依存関係で流す。選ぶ候補が残っていなければ `--narrate` で手順 3 の合成もまとめて流せる）。
+
+Apple シリコンの 1 台（12 コア・48GB）、キャッシュが空の状態、既定の動画で測った値：
+
+| 部分 | 1 つずつ | 並列 |
+|---|---|---|
+| `setup.sh` 動画なし（venv 3 つ・モデル 4 つ・約 9GB） | 約 395 秒 | 255 秒（最長は音声合成用の venv） |
+| `setup.sh` 動画あり（＋ダウンロード・変換） | 約 627 秒 | 区切って取る前は 784 秒（うち 586 秒がダウンロード）。区切った後は 260〜300 秒の見込みで、測り直しはできていない（その後サイトに bot の確認を求められた） |
+| ダウンロード 476MB（1 本の接続では約 1MB/s に絞られた） | 586 秒 | `-N 8 --http-chunk-size 10M` で 60 秒 |
+| 変換（4K AV1 → 1080p30） | 約 200 秒 | （setup の中） |
+| ナレーション 7 文 | 1 本で 39 秒 | 2 本で 44 秒（なので 2 本目は 6 文以上残っているときだけ起動） |
+| 候補 21 本 | 1 本で 70 秒 | 25 秒ずらした 2 本で 56 秒 |
+| `-d cpu` の demucs（43 秒の抜き出し）を 21 本の合成の横で | 52 秒＋56 秒 | 57 秒／合成 62 秒 |
+| `build_all.py`（8.8 分の元動画・31 秒の挿入） | 213 秒 | 196 秒（組み立ての再エンコードが 146 秒） |
 
 ## 手順
 
-0. **作業場所**：作業用のフォルダを作り、`scripts/examples/` の `project.example.json`（`project.json` という名前で。既定の動画なら代わりに `default-video.json`）・`sentences.json`・`subtitles.json`・`events.template.json` を写す。例の値はすべて置き換える（既定の設定なら、スライドとナレーションの側だけ）。`rights.voice_clone_authorized` は false のまま始め、ユーザーが声の複製を選んでから true にする。
-1. **ダウンロードと作業用の変換版**：`yt-dlp -f "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b" --merge-output-format mp4 --write-auto-subs --sub-langs ja -o "src/source.%(ext)s" <url>`。
+0. **作業場所**：作業用のフォルダを作り、`scripts/examples/` の `project.example.json`（`project.json` という名前で。既定の動画なら代わりに `default-video.json`）・`sentences.json`・`subtitles.json`・`events.template.json` を写す。例の値はすべて置き換える（既定の設定なら、スライドとナレーションの側だけ）。`tts.python` と `tts.model` は `$VIE_HOME/env.sh` から書く（`setup.sh` が両方を表示する）。`rights.voice_clone_authorized` は false のまま始め、ユーザーが声の複製を選んでから true にする。
+1. **ダウンロードと作業用の変換版**（`setup.sh --source <url> --project <dir>` が 1 つの裏の処理として両方を流す）：`yt-dlp -N 8 --http-chunk-size 10M -f "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b" --merge-output-format mp4 --write-auto-subs --sub-langs ja -o "src/source.%(ext)s" <url>`（区切って取る。1 本の接続では約 1MB/s に絞られ、同じ 476MB が 586 秒、区切ると 60 秒だった）。サイトに「bot ではないことの確認」を求められたら、`--cookies-from-browser <ブラウザ名>` を付けて流し直す。
    一度だけ変換する：`ffmpeg -c:v libdav1d -i src/source.mp4 -vf "scale=1920:1080:flags=lanczos,fps=30" -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -c:a aac -b:a 192k -ar 48000 -ac 2 work/base_1080p.mp4`。
    以降はすべて変換版を読む（4K の AV1 をコマごとに読むと遅すぎる）。字幕の時刻は元動画のコマの刻み（`source.measured_fps`、多くは 60）で測る。30fps の変換版では 1 コマだけの字幕が見えないことがある。
 2. **切れ目**：`find_cut.py <変換版> <t0> <t1> <出力先> --band x,y,w,h` で、0.1 秒ごとのコマ一覧、字幕帯のコマごとの縦並べ、50 ミリ秒ごとの音量（RMS）が出る。セリフの谷で切る。止めるコマは、次の字幕が出る前の最後のコマ（`cut.time` は、その次のコマへ切り上げる）。同じカットの途中で切るときは、戻りに白フラッシュを挟む（組み込み済み）。挟まないと、つなぎの失敗に見える。
 3. **差し替える語をすべて探す**（見立てのときだけ）：セリフは、全体の音声を whisper で語ごとの時刻付きで書き起こす（BGM の強い区間は短く区切って書き起こし直す）。画面の文字は、`find_text.py <動画> <出力先> --words ...` で探す（`ocr_frames.swift` が macOS の Vision で 0.1 秒ごとのコマを文字認識する。0.5 秒ごとでは短い字幕を取りこぼす）。続けて出ている区間と位置の目安が一覧で出るので、区間ごとに `find_cut.py --band` で、出ている最初と最後のコマを測り直す。読みの違う書き方でも探す。S1…（セリフ）、V1…（画面の文字）の一覧にし、時刻・位置・話し手を書く。字幕にだけ出て声が聞こえない箇所は、その語の音声との相互相関で、下に声が流れていないことを確かめてから、作り直しは不要と決める。
 4. **台本と編集リスト**：語り手は、その人物の元の口調で話す。スライド 1 枚につきナレーション 1 ページ。締めの一言で元の場面に戻す。次の 3 つは別々に持つ：読み上げの文（`sentences.json`）、字幕（`subtitles.json`：1 行は最大 28 文字、「／」で改行、英数字の前後に空白を入れない）、スライド。私たちが足す文言で、その物を何と呼ぶかを書いておく。**関門**：声の作業に入る前に、QA が台本と編集リストを確かめる（切れ目の根拠、時刻のぶつかり、28 文字を超える行の改行、スライドとの事実の一致）。
-5. **声の手本と読み上げ**：語り手のいちばんきれいなセリフを 5〜15 秒切り出し（音楽なし。要るなら demucs で声だけにする。叫びのセリフには叫びの手本を別に用意する）、一字一句の書き起こしを添える。時刻は `--engine say` で仮に組み、`build_narration.py --engine clone` で作る。`clone_say.py` は、途中で切れた読み上げを種を 1 つ進めて作り直し、頭の無音を切り、後ろに 0.25 秒の無音を足す。一括のときは `--jobs` を `SHARD=0/2` と `SHARD=1/2` で並べて流す。Apple シリコンの 1 台で測ったときは 2 本が最も速く、4 本にしても速くならなかった。
+5. **声の手本と読み上げ**：語り手のいちばんきれいなセリフを 5〜15 秒切り出し（音楽なし。要るなら demucs で声だけにする。叫びのセリフには叫びの手本を別に用意する）、一字一句の書き起こしを添える。時刻は `--engine say` で仮に組み、`build_narration.py --engine clone` で作る。`clone_say.py` は、途中で切れた読み上げを種を 1 つ進めて作り直し、頭の無音を切り、後ろに 0.25 秒の無音を足す。`build_narration.py` は 25 秒ずらして 2 本で流す（`--workers`・`tts.workers`・`tts.stagger`）。候補をまとめて作るときは、同じジョブのファイルで `clone_say.py --jobs` を 20〜30 秒ずらして 2 つ起動する（それぞれ、まだ誰も取っていないものを順に取る）。Apple シリコンの 1 台で測ると、1 本で毎分 7.9 本、2 本で 11.0 本、4 本で 10.5 本。モデルの読み込みは 1 本あたり最大約 4.2GB。音声合成の最中に whisper（score.py・書き起こし）を流さない（両方とも遅くなる）。
 6. **イントネーションの直し**：文ごとに種と書き方を変えた候補を作り、`score.py` で採点する（whisper の読み・pyopenjtalk のアクセントとの一致・流れ）。`listen_page.py` の試聴ページでユーザーに選んでもらい、選んだものを `narration.take` に書く。読み違いとアクセントに効いたこと：
    - 問題の語や名前を、伸ばす音を「ー」で書いたカタカナにする（例：機能追加 → キノーツイカ）。
    - 読み違える語はかなにする。ただし、かなにすると別の語（同音語）に読まれるもの（機能追加をひらがなにすると「昨日」）は漢字のまま。
@@ -73,7 +93,7 @@ description: "既存の動画を選んだ場面で止め、ナレーション付
 9. **演出の時刻**：`examples/events.template.json` を写して使う。時刻はすべてナレーションを起点にした式（`=n2_01.s`、`=T2+0.4`）で書くので、読み直しても時刻を手で写し直さなくてよい。`resolve_events.py` が、テンプレートの `checks` を確かめる。時刻の決まり：マーカーやページ送りの前に、ズームを全体表示へ戻しきる（どちらも全体表示の座標で描くため）。札はズーム中は消す。札（日付・補足）は、全体表示の空いた場所に置き、スライドの文字に重ねない。白い地には薄い影を付ける。補足の札は、その中身を話している文の間だけ出す。ページ送りと相づちは、ナレーションの切れ目に置く（テンプレートの checks が、相づちが前の文の声の終わりより前に始まらないこと、次の文の声にかからないことを確かめる）。点滅の枠は、スライドにもともとある赤枠の外側に描く（重ねると見分けがつかない）。相づちは、聞き手の人物の短い反応を元動画から切り出して使う（顔の小窓と声）。新しく声は作らない。
 10. **テロップと字幕**：`make_telops.py`。字幕は測った声の立ち上がりから出す（-35 dB。-45 dB だと頭の雑音で早く出る）。見出しは 0.2 秒でフェードする。相づちの字幕は顔の小窓の上に出す。長い書き出しの前に、`preview.py` のブラウザ用の簡易プレビューで時刻と文言を確かめる。
 11. **音と音量**：挿入部分のあいだ、元動画の音は止める（急に静かになってチャイムが鳴ること自体が笑いになる）。切れ目の近くの元のセリフとナレーションを `loudness.py measure` で測り、`audio.narration_gain_db` でそろえる。効果音はナレーションより 6 LU ほど小さくする（`make_sfx.py` で作れる）。仕上げは 2 パスの loudnorm を linear で。dynamic に切り替わったら、そのまま使わず、混ぜるときの音量を直す。
-12. **書き出し**：`build_all.py project.json out/final.mp4`（時刻の解決 → 板 → テロップ → 音 → loudnorm → 挿入部分 → 組み立て → 確認）。同じ名前の出力があれば上書きせずに止まる。
+12. **書き出し**：`build_all.py project.json out/final.mp4` は、各段を依存関係の順に、並べられるものは並べて流す：板は組み立ての前までの間ずっと並行。テロップ → 挿入部分の書き出しと、音の組み立て → 2 パスの loudnorm を並行。続けて組み立て（全体の再エンコードで、書き出し時間の約 3/4）。最後に `check_output.py` と `verify_frames.py` を同時に。`--narrate` を付けると先頭に音声合成の段が入る（合成の間に板を作る）。記録は `<work>/logs/`、最後に所要時間の表が出る。メモリの少ない機械では `--sequential`。同じ名前の出力があれば上書きせずに止まる。
 13. **QA**：`check_output.py`（コマ数、話し声の箇所での画と音のずれ、全体・挿入部分・元のセリフの音量、黒や止まったコマ）と、設定の `checks` から作る `verify_frames.py` の並べ図（各板と差し替えの直前・始まり・真ん中・最後・直後、切れ目と戻り、すべての演出）。白フラッシュの直後のコマが元の画になっていて、ぼかした背景が 1 コマも残っていないこと（白は元の画の側で消す）。見つかった黒いコマ・止まったコマは、元動画の同じ位置にもあるかで判断する（無ければ新しく入った不具合）。QA は挿入部分と差し替えたセリフを書き起こし直し、字幕を台本と一字ずつ照らし、耳で確かめることを一覧にする。
 
 ## 関門と人の耳
@@ -91,6 +111,7 @@ description: "既存の動画を選んだ場面で止め、ナレーション付
 
 | スクリプト | 役割 |
 |---|---|
+| `setup.sh` | 初回の環境：venv・モデル・ダウンロードと変換版を並列に、途中から再開できる形で |
 | `common.py`・`textlib.py` | 設定、コマ数の計算の一元化（切れ目・挿入・元動画のコマ数、1 コマあたりの音の標本数）、Pillow の文字 |
 | `find_cut.py` | コマ一覧・字幕帯の縦並べ・音量の表 |
 | `find_text.py`・`ocr_frames.swift` | 画面の文字の検索（macOS の Vision の文字認識） |

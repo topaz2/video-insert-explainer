@@ -1,6 +1,6 @@
 """Synthesize the narration clips, lay them out on the insert timeline and mix narration_full.wav.
 
-usage: python3 build_narration.py <project.json> [--engine clone|say] [--only id,id]
+usage: python3 build_narration.py <project.json> [--engine clone|say] [--only id,id] [--workers N]
 
 Config "narration":
   sentences   JSON list [{"id": "n1_00", "page": 1, "say": "<reading text>", "seed": 11}]  (the text the TTS
@@ -8,7 +8,11 @@ Config "narration":
   clips_dir, timeline, full     output paths
   start (2.6), gap (0.10), page_breath (0.8), page_breath_overrides {"<page>": seconds}, end_pad (0.5)
   take        optional {"<id>": "<wav>"} to use a chosen candidate (listening page) instead of synthesizing
-Engine "clone" runs scripts/clone_say.py with tts.python (needs rights.voice_clone_authorized); "say" is the
+Engine "clone" runs scripts/clone_say.py with tts.python (needs rights.voice_clone_authorized) in --workers
+processes (default tts.workers, 2) started tts.stagger seconds apart (default 25; each model load peaks at ~4.2 GB);
+they share the job list, each taking the next unclaimed sentence. A later worker starts only while at least
+tts.min_left (default 6) sentences are unclaimed: 7 sentences took 39 s with 1 worker and 44 s with 2.
+Measured on one Apple-silicon machine: 7.9 takes/min with 1 worker, 11.0 with 2, 10.5 with 4. "say" is the
 macOS voice (tts.say_voice, default Kyoko), for timing drafts only - never in a deliverable.
 Clone clips end with 0.25 s of silence, which is why the default gap is 0.10 s (0.35 s heard).
 timeline.json segs carry start, end and "voice" = start + measured voice onset (first 10 ms window above -35 dB:
@@ -21,6 +25,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 
 import numpy as np
 import soundfile as sf
@@ -50,6 +55,7 @@ def main():
     ap.add_argument("project")
     ap.add_argument("--engine", default="clone", choices=["clone", "say"])
     ap.add_argument("--only", default="")
+    ap.add_argument("--workers", type=int, default=0)
     a = ap.parse_args()
     pj = Project(a.project)
     nc = pj.get("narration")
@@ -71,7 +77,18 @@ def main():
     elif todo:
         jobs = os.path.join(clips, "_jobs.json")
         json.dump([{"text": s["say"], "out": s["file"], "seed": s.get("seed", 1234)} for s in todo], open(jobs, "w"), ensure_ascii=False)
-        subprocess.run([pj.p(pj.get("tts.python")), os.path.join(HERE, "clone_say.py"), "--project", pj.path, "--jobs", jobs], check=True)
+        n = max(1, min(a.workers or pj.get("tts.workers", 2), len(todo)))
+        cmd = [pj.p(pj.get("tts.python")), os.path.join(HERE, "clone_say.py"), "--project", pj.path, "--jobs", jobs]
+        procs = []
+        for k in range(n):
+            if k:
+                time.sleep(pj.get("tts.stagger", 25))
+                left = sum(not (os.path.exists(s["file"]) or os.path.exists(s["file"] + ".claim")) for s in todo)
+                if left < pj.get("tts.min_left", 6):
+                    break  # another model load would not pay for itself
+            procs.append(subprocess.Popen(cmd))
+        if any(p.wait() for p in procs):
+            raise SystemExit("clone_say.py failed")
     for s in sents:  # clips kept from an earlier run may come from the other engine (.aiff draft vs .wav clone)
         if s not in todo and s["id"] not in take and not os.path.exists(s["file"]):
             alt = os.path.splitext(s["file"])[0] + (".wav" if ext == ".aiff" else ".aiff")

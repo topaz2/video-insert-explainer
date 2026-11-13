@@ -2,7 +2,9 @@
 
 usage: <tts-venv>/bin/python clone_say.py --project <project.json> --text "<sentence>" --out <out.wav> [--seed N]
        <tts-venv>/bin/python clone_say.py --project <project.json> --jobs <jobs.json>        # [{"text","out","seed"}]
-       SHARD=k/n ... --jobs <jobs.json>   worker k of n takes every n-th job (run 2 workers side by side)
+Several workers may run on the same jobs file: each takes the next job nobody holds (<out>.claim), so a worker
+started later simply joins in. 2 workers started 20-30 s apart were fastest on one Apple-silicon machine (each
+model load peaks at ~4.2 GB; 4 workers were not faster). build_narration.py --workers does this for you.
 
 Refuses to run unless the project config has "rights": {"voice_clone_authorized": true} - set it per video,
 only after the user explicitly chose to clone that voice; never copy it from an earlier project.
@@ -124,20 +126,49 @@ def main():
     a = ap.parse_args()
     conf = load_project(a.project)
     if a.jobs:
-        k, n = map(int, os.environ.get("SHARD", "0/1").split("/"))
-        jobs = [j for j in json.load(open(a.jobs, encoding="utf-8")) if not os.path.exists(os.path.join(conf["root"], j["out"]))][k::n]
+        jobs = json.load(open(a.jobs, encoding="utf-8"))
     else:
         if not (a.text and a.out):
             ap.error("--text and --out, or --jobs")
         jobs = [{"text": a.text, "out": os.path.abspath(a.out), "seed": a.seed}]
-    print(f"{len(jobs)} job(s)", flush=True)
-    if not jobs:
+    for j in jobs:
+        j["out"] = j["out"] if os.path.isabs(j["out"]) else os.path.join(conf["root"], j["out"])
+    left = [j for j in jobs if not os.path.exists(j["out"])]
+    print(f"{len(left)} job(s) left", flush=True)
+    if not left:
         return 0
     voice = Voice(conf)
-    for j in jobs:
-        out = j["out"] if os.path.isabs(j["out"]) else os.path.join(conf["root"], j["out"])
-        voice.say(j["text"], out, int(j.get("seed", 1234)))
+    for j in left:
+        if os.path.exists(j["out"]) or not claim(j["out"]):
+            continue
+        try:
+            if not os.path.exists(j["out"]):  # another worker may have finished it just before the claim
+                voice.say(j["text"], j["out"], int(j.get("seed", 1234)))
+        finally:
+            os.unlink(j["out"] + ".claim")
     return 0
+
+
+def claim(out):
+    """Take a job no other worker holds; a claim left by a worker that is gone is taken over."""
+    path = out + ".claim"
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    for _ in range(2):
+        try:
+            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            try:
+                os.kill(int(open(path).read() or 0), 0)
+                return False
+            except (ProcessLookupError, ValueError):
+                os.unlink(path)
+                continue
+            except PermissionError:
+                return False
+        os.write(fd, str(os.getpid()).encode())
+        os.close(fd)
+        return True
+    return False
 
 
 if __name__ == "__main__":

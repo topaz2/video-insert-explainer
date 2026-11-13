@@ -50,7 +50,17 @@ If you name no video, the skill uses its default video (see Special Thanks) with
 
 ## Requirements
 
-macOS (Apple silicon), ffmpeg, yt-dlp, uv, Python with Pillow / numpy / soundfile / librosa. See the Environment section of `SKILL.md` for the TTS and ASR environments.
+macOS (Apple silicon) with Homebrew `ffmpeg`, `yt-dlp` and `uv`. Everything else (Python environments, the TTS,
+ASR and stem-separation models) is installed by `scripts/setup.sh`.
+
+## First run
+
+The skill starts `skills/video-insert-explainer/scripts/setup.sh` in the background as its first step: it builds the three
+Python environments, downloads every model and, with `--source <url> --project <dir>`, downloads the video and
+makes the 1080p work copy, all in parallel while Claude writes the script. It is idempotent and resumable;
+caches live in `~/.cache/video-insert-explainer` (or `$VIE_HOME` / `--home`). On a fresh machine the
+environment and models (about 9 GB) took 255 s in parallel against about 395 s one job after another; see
+"Fast path" in `SKILL.md`. If YouTube asks to confirm you are not a bot, rerun with `--cookies-from-browser <browser>`.
 
 ## Rights
 

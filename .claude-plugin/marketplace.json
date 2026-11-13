@@ -1,0 +1,15 @@
+{
+  "name": "video-insert-explainer",
+  "description": "Insert a narrated slide explainer into an existing video, in the voice of a character from the video",
+  "owner": {
+    "name": "topaz2",
+    "url": "https://github.com/topaz2"
+  },
+  "plugins": [
+    {
+      "name": "video-insert-explainer",
+      "source": "./",
+      "description": "Pause a video at a chosen moment, explain slides with zooms, markers, page turns and subtitles in a cloned character voice, then return to the video"
+    }
+  ]
+}

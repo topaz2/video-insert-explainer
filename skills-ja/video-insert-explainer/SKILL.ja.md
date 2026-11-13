@@ -10,7 +10,7 @@ description: "既存の動画を選んだ場面で止め、ナレーション付
 
 語そのものの例は `scripts/examples/` にある：`sentences.json`（読み上げの文。大事な語は伸ばす音を「ー」で書いたカタカナ）、`subtitles.json`（画面に出す字幕）、`project.example.json` の板。
 
-スクリプトはすべて `~/.claude/skills/video-insert-explainer/scripts/` にあり、1 つのプロジェクト設定（`scripts/examples/project.example.json` は架空の値、`default-video.json` は既定の動画で測った値）を読む。各スクリプトの使い方は、ファイル冒頭の説明文に書いてある。
+スクリプトはすべて、英語版の SKILL.md と同じフォルダにある `scripts/` に入っている（スキルとして読み込まれたときの書き方は `${CLAUDE_SKILL_DIR}/scripts/`。手で写したときもプラグインとして入れたときも同じ）。以下で名前だけ書くスクリプトは、このフォルダのもの。どれも 1 つのプロジェクト設定（`scripts/examples/project.example.json` は架空の値、`default-video.json` は既定の動画で測った値）を読む。各スクリプトの使い方は、ファイル冒頭の説明文に書いてある。
 
 ## 権利の確認（ダウンロードと声の作業の前に）
 

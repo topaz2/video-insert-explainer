@@ -13,7 +13,8 @@ the slides. `scripts/examples/` shows the words themselves: `sentences.json` (th
 katakana long-vowel spelling of the key word), `subtitles.json` (the display text) and the plates in
 `project.example.json`.
 
-All scripts live in `~/.claude/skills/video-insert-explainer/scripts/` and read one project config
+All scripts live in `${CLAUDE_SKILL_DIR}/scripts/` (the `scripts/` folder next to this SKILL.md, wherever the
+skill or plugin is installed); the bare script names below are in that folder. They read one project config
 (`scripts/examples/project.example.json` has fictional values, `default-video.json` the measured values of the
 default video; each script's docstring is its contract).
 

@@ -8,18 +8,44 @@ It covers download, cut-point search, script, voice clone (Qwen3-TTS), Japanese 
 
 ## Contents
 
+- `.claude-plugin/marketplace.json`, `.claude-plugin/plugin.json` — the marketplace and plugin manifests (the repository root is both)
 - `skills/video-insert-explainer/SKILL.md` — the skill (English)
 - `skills/video-insert-explainer/scripts/` — the pipeline scripts; `scripts/examples/` holds a fictional example config (`project.example.json`) and the default-video preset (`default-video.json`, values measured on the default video)
 - `skills-ja/video-insert-explainer/SKILL.ja.md` — the same skill in Japanese (for human readers)
 
 ## Install
 
+### As a plugin (recommended)
+
+This repository is a Claude Code plugin marketplace. In a Claude Code session:
+
+```
+/plugin marketplace add topaz2/video-insert-explainer
+/plugin install video-insert-explainer@video-insert-explainer
+```
+
+or from your shell:
+
+```sh
+claude plugin marketplace add topaz2/video-insert-explainer
+claude plugin install video-insert-explainer@video-insert-explainer
+```
+
+As a plugin skill it is namespaced: `/video-insert-explainer:video-insert-explainer`. Later commits reach you with
+`/plugin marketplace update video-insert-explainer` (or by turning on auto-update for this marketplace in `/plugin`).
+
+### By copying the skill
+
 ```sh
 git clone https://github.com/topaz2/video-insert-explainer.git
 cp -R video-insert-explainer/skills/video-insert-explainer ~/.claude/skills/
 ```
 
-Then ask Claude Code something like "insert these slides into this video right after <scene>, narrated by <character>".
+Only `skills/` is loaded as a skill; `skills-ja/` holds a Japanese translation for human readers.
+
+### Use
+
+Ask Claude Code something like "insert these slides into this video right after <scene>, narrated by <character>".
 If you name no video, the skill uses its default video (see Special Thanks) with the ready preset, and asks only for the slides.
 
 ## Requirements

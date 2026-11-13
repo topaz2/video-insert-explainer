@@ -1,0 +1,10 @@
+{
+  "name": "video-insert-explainer",
+  "description": "Pause a video at a chosen moment, explain slides with zooms, markers, page turns and subtitles in a cloned character voice, then return to the video",
+  "author": {
+    "name": "topaz2"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/topaz2/video-insert-explainer",
+  "repository": "https://github.com/topaz2/video-insert-explainer"
+}

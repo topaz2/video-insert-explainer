@@ -53,7 +53,7 @@
     "slot": [48.40, 49.00], "word_from": 48.50, "carrier_text": "キノーツイカ置きに来たのよ", "ref": "calm",
     "seed_that_worked": 11, "max_tempo": 1.10, "delivered_tempo": 1.092,
     "out": "work/replace/S2_word.wav",
-    "_note": "48.40-48.50 is a silent gap used as slot room. Said alone the word took 0.8-1.7 s and fell after the second mora, so it is read inside the carrier sentence and extracted (word_tools.py extract). fit_word.py on the delivered extraction gives about 0.61 s at about 1.08x."}
+    "_note": "48.40-48.50 is a silent gap used as slot room. Said alone the word took 0.8-1.7 s and fell after the second mora, so it is read inside the carrier sentence and extracted (word_tools.py extract). Delivered: 0.601 s at 1.092x. fit_word.py on the extraction chose 1.083x, which gives 0.609 s and overruns the 0.60 s slot, so the delivered take was sped to 1.092x to fit."}
   ],
   "visual": "plates V1-V6 below; V4 and V6 are video-only replays (no audible speech under them, confirmed by cross-correlation), so they need no re-voicing",
   "interjections": [

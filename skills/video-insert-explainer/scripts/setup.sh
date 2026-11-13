@@ -116,7 +116,7 @@ hfdl() {
   dir="$HF_HOME/hub/models--$(echo "$1" | sed 's|/|--|g')"
   for try in 1 2 3; do
     uvx --from huggingface_hub hf download "$1" & pid=$!
-    last=x still=0
+    last=x still=0 stalled=0
     while kill -0 $pid 2>/dev/null; do
       sleep 5
       now=$(du -sk "$dir" "$HF_HOME/xet" 2>/dev/null | awk '{ s += $1 } END { print s }')
@@ -124,10 +124,12 @@ hfdl() {
       if [ $still -ge "${VIE_STALL_S:-120}" ]; then
         echo "no progress on $1 for ${VIE_STALL_S:-120} s; stopping it (attempt $try of 3)"
         pkill -KILL -P $pid; kill -KILL $pid  # a wedged transfer may never act on TERM
+        stalled=1
         break
       fi
     done
     wait $pid && return 0
+    [ $stalled = 1 ] || { echo "FAILED: hf download $1 exited with an error (see above)"; return 1; }
   done
   echo "STALLED: the download of $1 made no progress 3 times; check the network (or set HF_TOKEN) and rerun setup.sh"
   return 1
@@ -206,16 +208,17 @@ EOF
 }
 
 finish() {
-  failed=0
+  failed=0 env_ready=1
   for id in $(ids); do
     if [ ! -f "$STATE/$id/done" ]; then
       failed=1
+      [ "$id" = source ] || env_ready=0  # the environment does not need the video
       echo "---- $id: $(state_of "$id"); last lines of $STATE/$id/log"
       tail -n 15 "$STATE/$id/log" 2>/dev/null
     fi
   done
+  [ $env_ready = 1 ] && write_env
   [ $failed = 0 ] || { echo "rerun setup.sh to retry the failed jobs (finished ones are skipped)"; exit 1; }
-  write_env
   exit 0
 }
 

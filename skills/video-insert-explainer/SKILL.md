@@ -79,8 +79,8 @@ The slides and their names, wording and people stay out of the preset; it carrie
   TTS venv (`qwen-tts`, Pillow, numpy, soundfile, librosa - it also runs every media script), ASR/accent venv
   (`mlx-whisper pyopenjtalk-plus pyworld`, `setuptools<81` because pyworld imports `pkg_resources`), stem-separation
   venv (`demucs`, `torch<2.9`; `--no-demucs` skips it), Qwen3-TTS Base + tokenizer (Apache-2.0), whisper
-  large-v3-turbo (MLX) and the htdemucs_ft weights. A model download whose files stop growing for 180 s is
-  restarted (up to 3 times; it resumes - one stalled for good once). Everything lives under `$VIE_HOME` (default
+  large-v3-turbo (MLX) and the htdemucs_ft weights. A model download whose files stop growing for 120 s is
+  restarted (up to 3 times; it resumes - one stalled for good once), then reported as `STALLED`. Everything lives under `$VIE_HOME` (default
   `~/.cache/video-insert-explainer`, shared by all projects; `--home DIR` moves it). Afterwards
   `source $VIE_HOME/env.sh` gives `HF_HOME`, `TORCH_HOME`, `HF_HUB_OFFLINE=1`, `VIE_TTS_PY` / `VIE_ASR_PY` /
   `VIE_SEP_PY` and `VIE_TTS_MODEL`; put `VIE_TTS_PY` in `tts.python` and `VIE_TTS_MODEL` (the snapshot directory) in

@@ -18,6 +18,7 @@ with 0.25 s of silence and written as 48 kHz mono s16. Existing outputs are skip
 """
 
 import argparse
+import fcntl
 import json
 import os
 import random
@@ -139,36 +140,28 @@ def main():
         return 0
     voice = Voice(conf)
     for j in left:
-        if os.path.exists(j["out"]) or not claim(j["out"]):
+        lock = claim(j["out"])
+        if lock is None:
             continue
         try:
             if not os.path.exists(j["out"]):  # another worker may have finished it just before the claim
                 voice.say(j["text"], j["out"], int(j.get("seed", 1234)))
         finally:
-            os.unlink(j["out"] + ".claim")
+            lock.close()
     return 0
 
 
 def claim(out):
-    """Take a job no other worker holds; a claim left by a worker that is gone is taken over."""
-    path = out + ".claim"
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    for _ in range(2):
-        try:
-            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        except FileExistsError:
-            try:
-                os.kill(int(open(path).read() or 0), 0)
-                return False
-            except (ProcessLookupError, ValueError):
-                os.unlink(path)
-                continue
-            except PermissionError:
-                return False
-        os.write(fd, str(os.getpid()).encode())
-        os.close(fd)
-        return True
-    return False
+    """Lock <out>.claim without waiting: the open file holding the lock, or None while another worker holds it.
+    The kernel drops the lock when its worker exits, however it exits, so nothing stale is left to take over."""
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    f = open(out + ".claim", "a")
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return f
+    except BlockingIOError:
+        f.close()
+        return None
 
 
 if __name__ == "__main__":

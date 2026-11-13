@@ -20,7 +20,9 @@ shares the GPU with the TTS; run score.py (whisper) only after the narration is 
 Measured (8.8 min source, 31 s insert): 213 s one by one, 196 s as a graph. assemble's full re-encode (x264 slow,
 already multithreaded) takes 146 s of it and has nothing to run beside it.
 Each stage writes <work>/logs/<stage>.log and the run ends with a wall-clock table. A failing stage stops the
-run: stages still running are terminated, the failing log's tail is printed, and the exit status is 1.
+run: stages still running are terminated, the failing log's tail is printed, and the exit status is 1; Ctrl-C or
+SIGTERM stops every running stage the same way (exit 130). insert.mp4 and out.mp4 are written as *.part.mp4 and
+renamed when their stage succeeds, so a stopped run leaves nothing that --skip-insert or the next run would reuse.
 --sequential runs the same stages one at a time (comparison, or a machine short of memory).
 """
 
@@ -57,53 +59,78 @@ def stages_for(pj, cfg, out, a):
                              "--TP", str(m.get("TP", -1)), "--LRA", str(m.get("LRA", 11)), "--sr", str(pj.sr)]),
     ]
     reuse = a.skip_insert and os.path.exists(insert)
-    if not reuse:
-        st.append(("insert", ["telops"], [py, s("build_insert.py"), cfg, "--render", insert]))
+    if not reuse:  # rendered under another name: a stopped render must not be reused by --skip-insert
+        st.append(("insert", ["telops"], [py, s("build_insert.py"), cfg, "--render", part(insert)], (part(insert), insert)))
     st += [
-        ("assemble", ["plates", "master"] + ([] if reuse else ["insert"]), [py, s("assemble.py"), cfg, insert, final, out]),
+        ("assemble", ["plates", "master"] + ([] if reuse else ["insert"]), [py, s("assemble.py"), cfg, insert, final, part(out)],
+         (part(out), out)),
         ("check", ["assemble"], [py, s("check_output.py"), cfg, out, *(["--sync", sync] if sync else []),
                                  *(["--dialogue", f"{dlg[0]},{dlg[1]}"] if dlg else [])]),
         ("verify", ["assemble"], [py, s("verify_frames.py"), cfg, out, os.path.join(work, "verify")]),
     ]
-    return st
+    return [(*x, None)[:4] for x in st]
+
+
+def part(path):
+    root, ext = os.path.splitext(path)
+    return f"{root}.part{ext}"
+
+
+def kill_group(p):
+    try:
+        os.killpg(p.pid, signal.SIGTERM)  # the whole group: build_narration has TTS workers of its own
+    except (ProcessLookupError, PermissionError):
+        pass
 
 
 def stop(running):
     for p, _, log in running.values():
-        try:
-            os.killpg(p.pid, signal.SIGTERM)  # the insert stage has chunk renders of its own
-        except ProcessLookupError:
-            pass
+        kill_group(p)
         p.wait()
         log.close()
+
+
+def interrupted(*_):
+    raise KeyboardInterrupt
 
 
 def run_graph(stages, logs, sequential):
     t_start, pending, running, done = time.time(), list(stages), {}, {}
     clock = lambda: time.time() - t_start  # noqa: E731
-    while pending or running:
-        for st in list(pending):
-            name, deps, cmd = st
-            if all(d in done for d in deps) and not (sequential and running):
-                log = open(os.path.join(logs, name + ".log"), "w")
-                running[name] = (subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, start_new_session=True), clock(), log)
-                pending.remove(st)
-                print(f"[{clock():7.1f}s] start {name}", flush=True)
-        for name, (p, t0, log) in list(running.items()):
-            rc = p.poll()
-            if rc is None:
-                continue
-            log.close()
-            del running[name]
-            if rc:
-                stop(running)
-                path = os.path.join(logs, name + ".log")
-                print(f"[{clock():7.1f}s] FAILED {name} (exit {rc}); last lines of {path}:", flush=True)
-                print("".join(open(path, encoding="utf-8", errors="replace").readlines()[-20:]), flush=True)
-                return 1
-            done[name] = (t0, clock())
-            print(f"[{clock():7.1f}s] done  {name} ({done[name][1] - t0:.1f}s)", flush=True)
-        time.sleep(0.2)
+    signal.signal(signal.SIGTERM, interrupted)
+    try:
+        while pending or running:
+            for st in list(pending):
+                name, deps, cmd, _ = st
+                if all(d in done for d in deps) and not (sequential and running):
+                    log = open(os.path.join(logs, name + ".log"), "w")
+                    p = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+                    running[name] = (p, clock(), log)
+                    pending.remove(st)
+                    print(f"[{clock():7.1f}s] start {name}", flush=True)
+            for name, (p, t0, log) in list(running.items()):
+                rc = p.poll()
+                if rc is None:
+                    continue
+                log.close()
+                del running[name]
+                if rc:
+                    kill_group(p)
+                    stop(running)
+                    path = os.path.join(logs, name + ".log")
+                    print(f"[{clock():7.1f}s] FAILED {name} (exit {rc}); last lines of {path}:", flush=True)
+                    print("".join(open(path, encoding="utf-8", errors="replace").readlines()[-20:]), flush=True)
+                    return 1
+                rename = next(st[3] for st in stages if st[0] == name)
+                if rename:
+                    os.replace(*rename)
+                done[name] = (t0, clock())
+                print(f"[{clock():7.1f}s] done  {name} ({done[name][1] - t0:.1f}s)", flush=True)
+            time.sleep(0.2)
+    except KeyboardInterrupt:
+        stop(running)
+        print(f"[{clock():7.1f}s] interrupted; stopped {', '.join(running) or 'nothing'}", flush=True)
+        return 130
     print(f"{'stage':10} {'start':>8} {'end':>8} {'took':>8}")
     for name, (t0, t1) in done.items():
         print(f"{name:10} {t0:8.1f} {t1:8.1f} {t1 - t0:8.1f}")
@@ -127,7 +154,11 @@ def main():
     logs = os.path.join(work, "logs")
     os.makedirs(logs, exist_ok=True)
     os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
-    rc = run_graph(stages_for(pj, pj.path, os.path.abspath(a.out), a), logs, a.sequential)
+    stages = stages_for(pj, pj.path, os.path.abspath(a.out), a)
+    for st in stages:
+        if st[3] and os.path.exists(st[3][0]):
+            os.unlink(st[3][0])  # left by a stopped run; assemble.py would refuse to overwrite it
+    rc = run_graph(stages, logs, a.sequential)
     if rc == 0:
         print("done", a.out)
     return rc

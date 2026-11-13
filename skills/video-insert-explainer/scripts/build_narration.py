@@ -83,12 +83,22 @@ def main():
         for k in range(n):
             if k:
                 time.sleep(pj.get("tts.stagger", 25))
-                left = sum(not (os.path.exists(s["file"]) or os.path.exists(s["file"] + ".claim")) for s in todo)
+                left = sum(not os.path.exists(s["file"]) for s in todo) - 1  # one is being generated now
                 if left < pj.get("tts.min_left", 6):
                     break  # another model load would not pay for itself
             procs.append(subprocess.Popen(cmd))
+        while any(p.poll() is None for p in procs):
+            if any(p.poll() for p in procs):  # one worker failed: stop the others instead of leaving them on the GPU
+                for p in procs:
+                    if p.poll() is None:
+                        p.terminate()
+                break
+            time.sleep(0.5)
         if any(p.wait() for p in procs):
             raise SystemExit("clone_say.py failed")
+        missing = [s["id"] for s in todo if not os.path.exists(s["file"])]
+        if missing:
+            raise SystemExit(f"no clip for {', '.join(missing)}")
     for s in sents:  # clips kept from an earlier run may come from the other engine (.aiff draft vs .wav clone)
         if s not in todo and s["id"] not in take and not os.path.exists(s["file"]):
             alt = os.path.splitext(s["file"])[0] + (".wav" if ext == ".aiff" else ".aiff")
